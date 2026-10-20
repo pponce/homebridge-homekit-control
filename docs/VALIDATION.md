@@ -11,6 +11,8 @@ Tests cover:
 - Three identical outlet names with independent characteristic writes.
 - Legacy accessory/service identity migration and a subsequent rename.
 - Heat-only thermostat modes, target limits and step size.
+- Fan and Fanv2 power/speed/direction, independent fan/light writes, optional controls,
+  native constraints and permissions, device errors, notifications, and cached restart/recovery.
 - Waiting for write acknowledgement and reporting device errors.
 - Late request completion, timeout, queue cancellation and no write replay.
 - Event connection loss, new transport, rejected/late subscriptions, and restored notifications.
@@ -20,7 +22,7 @@ Tests cover:
 - Private storage permissions and diagnostics without arbitrary values/secrets.
 
 These checks use real HAP service definitions and simulated transport responses.
-They do not establish radio/network interoperability with a Koogeek or Mysa.
+They do not establish radio/network interoperability with a Koogeek, Mysa, or fan.
 
 ## Actual host version check
 
@@ -54,6 +56,21 @@ interoperability still require the acceptance checks below.
 4. Change the target at the thermostat; check that Apple Home updates.
 5. Verify Off/Heat only if the device reports those modes. Do not assume cooling.
 6. Repeat restart and brief network-outage recovery checks.
+
+## Fan acceptance (including Hunter)
+
+1. Export the service structure and verify which Fan or Fanv2 controls are reported.
+   Keep Proxy all disabled to test explicit support. For an already paired device,
+   restart Homebridge after upgrading; do not pair again.
+2. Confirm fan and light controls both appear if the device exposes a light. Change
+   each independently and verify commands reach the intended function.
+3. Set several supported fan speeds and check the reported range and step size.
+4. Test direction, mode, and swing only if present. Follow the manufacturer's
+   instructions for reversing direction, including stopping the fan first if required.
+5. Change speed/power with the manufacturer's app or remote and confirm Home updates.
+6. Restart Homebridge and check that accessory/service identities and assignments remain.
+7. Interrupt Wi-Fi, then restore it. Confirm errors are reported, old commands are not
+   replayed, current state is refreshed, and external changes reach Home again.
 
 ## Pairing UI acceptance
 

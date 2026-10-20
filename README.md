@@ -9,11 +9,13 @@
 ## This fork
 
 This fork adds connection recovery, independent controls for repeated services,
-standard thermostat support, and a pairing/diagnostics screen. See [CHANGELOG.md](CHANGELOG.md).
+standard thermostat and fan support, and a pairing/diagnostics screen. See [CHANGELOG.md](CHANGELOG.md).
 
 **Koogeek O1US and Mysa INF-V1-0 have not yet been tested on physical hardware.**
-Automated tests cover a three-outlet accessory and a heat-only thermostat. Your device's
-reported services and firmware determine which controls are available.
+Automated tests cover a three-outlet accessory, a heat-only thermostat, and both
+standard fan service types with a separate light. Physical fan compatibility also
+needs testing. Your device's reported services and firmware determine which controls
+are available.
 
 ## Pair from the settings screen
 
@@ -72,6 +74,15 @@ They exclude pairing credentials, PINs, arbitrary characteristic values and vend
 Thermostats retain their native supported modes and temperature limits. No heating
 control algorithm is moved into Homebridge. Manufacturer features not exposed over
 HomeKit (such as special floor-sensor settings or energy reporting) are not added.
+
+Fans support both standard HomeKit fan services (Fan and Fanv2), without enabling
+**Proxy all**. Power, speed, direction, current state, manual/automatic mode, swing,
+and physical-control locking are exposed only where the device reports them. Native
+speed limits, step sizes, modes, and read/write permissions are preserved. A fan's
+light remains a separate service with independent commands. Manufacturer features
+not exposed through HomeKit are not added. Existing paired fans are rediscovered
+after a Homebridge restart; they do not need to be paired again to gain these controls.
+
 BLE HomeKit and Matter are not supported by this plugin.
 
 ## Testing and compatibility
@@ -79,7 +90,7 @@ BLE HomeKit and Matter are not supported by this plugin.
 See [docs/VALIDATION.md](docs/VALIDATION.md) for automated checks and hardware acceptance
 steps. CI tests locked Homebridge 1.9.0 on Node 18, 20 and 22, plus the reported
 Homebridge 2.4.0 / Node 24.22.0 / npm 11.19.1 stack with Homebridge's HAP 2.2.2 library.
-Build, lint, 18 regression tests, package checks and the custom UI browser flow pass
+Build, lint, regression tests, package checks and the custom UI browser flow pass
 on that newer stack. Node 24.22.0 and later 24.x releases are now included in the
 Node declaration; the Homebridge declaration and existing dependencies are unchanged.
 Older-version coverage is compatibility testing, not a recommendation to install an
@@ -107,6 +118,7 @@ The Plugin currently supports the following Services provided by WLAN-based Home
 - Switch
 - Outlet (including multiple outlet services)
 - Thermostat (device-reported modes and limits)
+- Fan / Fanv2 (device-reported power, speed, direction, and optional controls)
 - Motion Sensors
 - Temperatur Sensors
 - Humidity Sensors

@@ -2,6 +2,7 @@
 
 - Support multiple same-type services (including three-outlet strips) using device/accessory/service IDs, with migration of existing cached UUIDs and service subtypes.
 - Add standard thermostat services and characteristics. Preserve the source device's temperature constraints and operating modes.
+- Add standard Fan and Fanv2 services, including reported speed, direction, fan state/mode, swing, and physical-control locking. Preserve native constraints and permissions, and keep fan/light commands independent. No Proxy all setting is required.
 - Await device writes and propagate per-characteristic HAP errors to HomeKit. Never automatically replay a timed-out write.
 - Replace the shared timeout/retry queue with independently bounded requests; ignore late responses after timeout or shutdown.
 - Retry devices offline during startup, restore notifications after disconnects, and refresh readable state every 30 seconds. Retry delays are capped; prolonged outages fall back to five-minute probes.
@@ -19,4 +20,4 @@
 - Resolve modern package exports when building against Homebridge 2.x; continue checking plugin source types while skipping upstream declaration-file checks.
 - Explain pairing-unavailable error 6 in settings and documentation; distinguish saved pairings, authentication failures, and busy/locked-out accessories.
 
-Hardware validation is still required for Koogeek O1US and Mysa INF-V1-0. These models are candidates, not certified/tested device claims.
+Hardware validation is still required for Koogeek O1US, Mysa INF-V1-0, and fans (including the Hunter fan reported in upstream issue #27). These models are candidates, not certified/tested device claims. BLE support is unchanged and remains unavailable.
