@@ -59,8 +59,9 @@ write, not a separate physical measurement of the load or heating element.
 Devices unavailable at startup remain cached and are retried automatically. Reads
 refresh after reconnect, and event subscriptions are restored. Retry delays increase
 up to one minute; after six failed recovery attempts a probe runs every five minutes.
-Readable state is refreshed every 30 seconds to detect silent outages. Reserve each
-device's IP in your router; automatic recovery from an IP address change is not included.
+Readable state is refreshed every 30 seconds to detect silent outages. Recovery also
+uses mDNS to find changed IP addresses or HAP ports by device ID. If mDNS is unavailable
+(for example across isolated VLANs), the last known/configured endpoint is retried.
 
 Runtime status reports the actual plugin process's Node and Homebridge versions.
 **Test connection** opens a separate connection; success does not prove that the
@@ -100,7 +101,8 @@ need their own test results before being advertised as supported.
 The Plugin currently supports the following Services provided by WLAN-based HomeKit enabled devices:
 
 - Switch
-- Outlet
+- Outlet (including multiple outlet services)
+- Thermostat (device-reported modes and limits)
 - Motion Sensors
 - Temperatur Sensors
 - Humidity Sensors
@@ -114,13 +116,24 @@ The Plugin currently supports the following Services provided by WLAN-based Home
 
 Please note that BLE is currently not supported, as it seems to be unstable when multiple BLE-enabled Plugins are installed. All supported sensors on any configured device are automatically discovered and added when Homebridge starts up.
 
-## Install
+## Install this development fork
 
-```
-sudo npm i -g homebridge-homekit-control
+The changes in this fork are not published to the upstream npm package. To build a
+package for testing with your Homebridge installation:
+
+```sh
+git clone --branch reliability-pairing-thermostats https://github.com/pponce/homebridge-homekit-control.git
+cd homebridge-homekit-control
+npm ci
+npm pack
 ```
 
-## Pairing Devices
+Use the resulting `.tgz` with the installation method appropriate to your Homebridge
+host/container. Keep a backup of the existing configuration, cached accessories and
+pairing store. Installing `homebridge-homekit-control` from the npm registry still
+installs the upstream release, not this branch.
+
+## Legacy command-line pairing
 
 To pair your devices with Homebridge HomeKit Control, follow these steps:
 
@@ -164,7 +177,7 @@ Here are some additional configuration parameters, not obtained by the Device Pa
 
 - `services.enableHistory` (_boolean_): **true** will enable fakeGato for compatible Sensors. This will allow you to view a history in the EVE-App
 - `services.historyInterval` (optional, _numeric_): Determins the Interval used to take readings. The valus range is **[30, 600]**. The default value is **600**
-- `services.proxyAll`(optional, _boolean_): By default we only proxy tested services and characteristics from your devices. When this mode is enabled, all available services and characteristics are proxied. Be carefull when activating, this may cause damage to your devices. The default value is **false**
+- `services.proxyAll`(optional, _boolean_): By default we proxy the explicitly registered services and characteristics. When this mode is enabled, all available services and characteristics are proxied. Be carefull when activating, this may cause damage to your devices. The default value is **false**
 - `services.uniquePrefix`(optional, _string_): When a device is added to multiple HomeBridge instances in the same network, you will need to provide a unique prefix. Otherwise Eve-App will get confused.
 
 #### Example

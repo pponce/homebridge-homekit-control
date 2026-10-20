@@ -103,6 +103,11 @@ export class HttpWrapper extends EventEmitter {
       throw e;
     });
   }
+  updateEndpoint(address: string, port: number) {
+    if (address === this.address && port === this.port) return;
+    this.address = address; this.port = port;
+    this.disconnect();
+  }
   get queueLength() { return this.list.length; }
   get subscriptionCount() { return this.subscriptions.size; }
   identify() { return this.request(() => this.client.identify()); }
@@ -116,18 +121,31 @@ export class HttpWrapper extends EventEmitter {
   }
   subscribeCharacteristics(ids: string[]): Promise<any> {
     if (!ids.length) return Promise.resolve();
+    const generation = this.generation;
     return this.request(async () => {
-      const result = checkStatus(await this.client.subscribeCharacteristics(ids));
-      ids.forEach(id => this.subscriptions.add(id));
-      return result;
+      try {
+        const result = checkStatus(await this.client.subscribeCharacteristics(ids));
+        if (generation !== this.generation) throw new Error("Connection interrupted");
+        ids.forEach(id => this.subscriptions.add(id));
+        return result;
+      } catch (e) {
+        // hap-controller caches even rejected subscriptions. Rebuild before retrying.
+        if (generation === this.generation && !this.stopped) this.disconnect();
+        throw e;
+      }
     });
   }
   watch(c: CharacteristicDescription, listener: (data: any) => void) { this.watchers.set(c.cname, listener); }
   clearWatchers() { this.watchers.clear(); }
   async unsubscribeAll() {
     if (this.subscriptions.size) {
-      await this.request(async () => checkStatus(await this.client.unsubscribeCharacteristics([...this.subscriptions])));
-      this.subscriptions.clear();
+      const generation = this.generation;
+      try { await this.request(async () => checkStatus(await this.client.unsubscribeCharacteristics([...this.subscriptions]))); }
+      finally {
+        // Closing the event connection also clears subscriptions on library versions
+        // whose unsubscribe implementation incorrectly skips subscribed IDs.
+        if (generation === this.generation && !this.stopped) this.disconnect();
+      }
     }
   }
   async shutdown() {

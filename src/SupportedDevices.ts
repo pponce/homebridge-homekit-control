@@ -58,7 +58,6 @@ export function listKnownCharacteristics(api: API, parent: SupportedServices): W
     api.hap.Characteristic.CoolingThresholdTemperature,
     api.hap.Characteristic.CurrentRelativeHumidity,
     api.hap.Characteristic.TargetRelativeHumidity,
-    api.hap.Characteristic.CurrentRelativeHumidity,
     api.hap.Characteristic.On,
     api.hap.Characteristic.OutletInUse,
     api.hap.Characteristic.MotionDetected,

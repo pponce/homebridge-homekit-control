@@ -90,6 +90,8 @@
     "cli.js",
     "config.schema.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md",
+    "docs/VALIDATION.md"
   ]
 }

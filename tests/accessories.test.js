@@ -9,7 +9,7 @@ function fixture(){
  const log=()=>{};for(const level of ['info','warn','debug','error'])log[level]=()=>{};
  const parent={api,log,accessories:[],supported:new SupportedServices(api),clientFinishedLaunching(){}};
  const config={id:'AA:BB:CC:DD:EE:FF',name:'Strip',address:'127.0.0.1',port:123,pairingData:{}};
- const client=new HKClient(config,parent);
+ const client=new HKClient(config,parent,async()=>[]);
  client.client={watch(){},async shutdown(){},queueLength:0,subscriptionCount:0};
  return {client,parent,config,cleanup:async()=>{await client.shutdown();fs.rmSync(root,{recursive:true,force:true});}};
 }
@@ -66,13 +66,14 @@ test('write completion is awaited before acknowledging success',async()=>{
 });
 test('offline startup retries, restores notifications and refreshes state',async()=>{
  const f=fixture();try{
- let attempts=0,notify=[];
+ let attempts=0,notify=[],endpoint;
+ f.client.discover=async()=>[{id:f.config.id,address:'192.0.2.1',port:456}];
  const data={accessories:[{aid:1,services:[outlet(10,'Outlet')]}]};
  f.client.client={getAccessories:async()=>{if(++attempts===1)throw new Error('offline');return data;},
- unsubscribeAll:async()=>{},clearWatchers(){},watch(){},getCharacteristics:async ids=>({characteristics:ids.map(id=>{const [aid,iid]=id.split('.').map(Number);return {aid,iid,value:iid===11?'Outlet':true};})}),
+ updateEndpoint:(address,port)=>{endpoint={address,port};},unsubscribeAll:async()=>{},clearWatchers(){},watch(){},getCharacteristics:async ids=>({characteristics:ids.map(id=>{const [aid,iid]=id.split('.').map(Number);return {aid,iid,value:iid===11?'Outlet':true};})}),
  subscribeCharacteristics:async ids=>{notify=ids;},shutdown:async()=>{}};
  await f.client.recover();assert.equal(f.client.online,false);assert(f.client.retry);assert.equal(f.client.didFinishStartup,true);
- clearTimeout(f.client.retry);f.client.retry=undefined;await f.client.recover();assert.equal(f.client.online,true);assert.deepEqual(notify,['1.12']);
+ clearTimeout(f.client.retry);f.client.retry=undefined;await f.client.recover();assert.equal(f.client.online,true);assert.deepEqual(notify,['1.12']);assert.deepEqual(endpoint,{address:'192.0.2.1',port:456});
  assert.equal(f.parent.accessories[0].getService(hap.Service.Outlet).getCharacteristic(hap.Characteristic.On).value,true);
  f.client.disconnected();assert.equal(f.client.online,false);assert(f.client.retry);
  }finally{await f.cleanup();}

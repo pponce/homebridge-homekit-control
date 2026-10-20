@@ -62,7 +62,8 @@ const controller = require('../shared/controller');
     device(id, prefix = '') {
       const device = this.configured().find(d => d.id === id && (d.uniquePrefix || '') === prefix);
       if (!device) throw new Error('Save this device in plugin settings first');
-      return device;
+      const status = storage.read(this.homebridgeStoragePath, 'status', `${device.uniquePrefix || ''}:${device.id.toUpperCase()}`);
+      return status?.address && status?.port ? { ...device, address: status.address, port: status.port } : device;
     }
   }
   new UiServer();

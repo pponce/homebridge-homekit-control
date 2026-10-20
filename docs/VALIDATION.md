@@ -10,7 +10,9 @@ Run `npm ci`, `npm run lint`, and `npm test`. GitHub Actions tests the existing 
 - Heat-only thermostat modes, target limits and step size.
 - Waiting for write acknowledgement and reporting device errors.
 - Late request completion, timeout, queue cancellation and no write replay.
-- Event connection loss, new transport and restored subscriptions.
+- Event connection loss, new transport, rejected/late subscriptions, and restored notifications.
+- Changed IP/port rediscovery and state refresh after recovery.
+- Browser pairing UI: discovery, pairing, save failure recovery, and credential omission.
 - Offline initial startup, recovery and state refresh.
 - Private storage permissions and diagnostics without arbitrary values/secrets.
 

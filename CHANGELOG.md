@@ -12,3 +12,6 @@
 - Add regression tests and CI for the existing Node 18/20/22 and locked Homebridge 1.9.0 baseline. No compatibility range is widened.
 
 Hardware validation is still required for Koogeek O1US and Mysa INF-V1-0. These models are candidates, not certified/tested device claims.
+
+- Rediscover changed IP addresses and HAP ports during recovery.
+- Reset the transport after rejected subscriptions and unsubscribe to work around stale subscription state in the controller dependency.

@@ -34,9 +34,12 @@ export class HKClient implements IHKClient {
   private failures = 0;
   private descriptorSignature = "";
   private diagnostics: any = {};
+  private endpoint: { address: string; port: number };
   private configured = new Set<HKPlatformAccessory>();
 
-  constructor(private readonly serviceConfig: HKServiceConfig, private readonly parent: IHKPlatform) {
+  constructor(private readonly serviceConfig: HKServiceConfig, private readonly parent: IHKPlatform,
+    private readonly discover: () => Promise<any[]> = () => require("../shared/controller").discover(undefined, 3)) {
+    this.endpoint = { address: serviceConfig.address, port: serviceConfig.port };
     this.name = serviceConfig.name || "Unnamed Accessory";
     this.deviceID = serviceConfig.id.toUpperCase();
     this.root = parent.api.user.storagePath();
@@ -69,7 +72,7 @@ export class HKClient implements IHKClient {
   private status(state: string) {
     this.diagnostics = { ...this.diagnostics, state, updatedAt: new Date().toISOString(), nodeVersion: process.version,
       homebridgeVersion: this.parent.api.serverVersion, pluginVersion: require("../package.json").version,
-      queueLength: this.client?.queueLength || 0, subscriptions: this.client?.subscriptionCount || 0, failures: this.failures };
+      address: this.endpoint.address, port: this.endpoint.port, queueLength: this.client?.queueLength || 0, subscriptions: this.client?.subscriptionCount || 0, failures: this.failures };
     try { storage.write(this.root, "status", this.key, this.diagnostics); }
     catch { this.parent.log.warn(`${this.name}: Could not save connection diagnostics`); }
   }
@@ -100,9 +103,19 @@ export class HKClient implements IHKClient {
     this.online = false;
     this.status("connecting");
     try {
+      if (this.failures || this.initialized) {
+        // mDNS IDs stay stable when DHCP addresses or the accessory's HAP port change.
+        const devices = await this.discover().catch(() => []);
+        if (this.stopped) return;
+        const discovered = devices.find(d => typeof d.id === "string" && d.id.toUpperCase() === this.deviceID);
+        if (discovered && typeof discovered.address === "string" && Number.isInteger(discovered.port) && discovered.port > 0 && discovered.port <= 65535) {
+          this.endpoint = { address: discovered.address, port: discovered.port };
+          this.client?.updateEndpoint(this.endpoint.address, this.endpoint.port);
+        }
+      }
       if (!this.client) {
         const pairing = storage.resolvePairing(this.root, this.serviceConfig);
-        this.client = new HttpWrapper(this.parent.log, this.serviceConfig.id, this.serviceConfig.address, this.serviceConfig.port, pairing);
+        this.client = new HttpWrapper(this.parent.log, this.serviceConfig.id, this.endpoint.address, this.endpoint.port, pairing);
         this.client.on("disconnected", () => this.disconnected());
       }
       const data = await this.client.getAccessories();
