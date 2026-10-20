@@ -157,10 +157,10 @@ if (options.help !== undefined) {
           const p = m.length === 3 ? m[1] + m[2] : m[0];
           pin = [p.slice(0, 3), p.slice(3, 5), p.slice(5, 8)].join("-");
         } else {
-          return errorCallback(new Error("Invalid Pin: " + pin));
+          return errorCallback(new Error("Invalid pairing code format"));
         }
 
-        console.log(`Pin: ${pin}`);
+
         rl.close();
 
         try {
@@ -199,7 +199,7 @@ if (options.help !== undefined) {
           accessories,
         };
         rl.close();
-        fs.writeFileSync(file, JSON.stringify(data, null, 4));
+        fs.writeFileSync(file, JSON.stringify(data, null, 4), { mode: 0o600, flag: "wx" });
         resolve(data);
       });
       rl.write(`${service.id}.json`.replace(/:/g, "-"));
@@ -234,7 +234,8 @@ if (options.help !== undefined) {
 
     console.log("\n\n");
     console.log("Paired with Service:");
-    console.log(data);
+    console.log(`${data.name} (${data.id}) — credentials saved to the chosen file.`);
+    await client.close();
 
     process.exit();
   } catch (error) {

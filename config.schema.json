@@ -15,21 +15,21 @@
               "title": "Prefix",
               "type": "string",
               "required": false,
-              "description": "When the same device is added to multiple HomeBridge Isntances, you should add a unqiue Prefix."
+              "description": "Optional namespace when the same device is used by multiple Homebridge instances. Keep it unchanged after pairing."
             },
             "name": {
               "title": "Name",
               "type": "string",
               "required": false,
               "placeholder": "Enter a Custom Name",
-              "description": "The Plugin will receive the Name from the Device. You may overrride that default name here."
+              "description": "Display name. Renaming after migration keeps the accessory identity."
             },
             "logFoundServices": {
-              "title": "Log Source Services",
+              "title": "Log service structure",
               "type": "boolean",
               "required": false,
               "default": false,
-              "description": "When enabled, we will dump all discovered services from the source Device to the Homebridge Log."
+              "description": "Log service types and IDs without characteristic values or pairing credentials."
             },
             "proxyAll": {
               "title": "Proxy All",
@@ -41,12 +41,12 @@
             "enableHistory": {
               "title": "Enable History",
               "type": "boolean",
-              "required": true,
+              "required": false,
               "default": false,
               "description": "Enables FakeGato for compatible Devices. This will enable the History Display in the EVE-App."
             },
             "historyInterval": {
-              "title": "Enable History",
+              "title": "History interval (seconds)",
               "type": "integer",
               "required": false,
               "default": 600,
@@ -79,38 +79,45 @@
                 "AccessoryPairingID": {
                   "title": "Accessory Pairing ID",
                   "type": "string",
-                  "required": true,
+                  "required": false,
                   "placeholder": "pairingData.AccessoryPairingID"
                 },
                 "AccessoryLTPK": {
                   "title": "Accessory LTPK",
                   "type": "string",
-                  "required": true,
+                  "required": false,
                   "placeholder": "pairingData.AccessoryLTPK"
                 },
                 "iOSDevicePairingID": {
                   "title": "iOS Pairing ID",
                   "type": "string",
-                  "required": true,
+                  "required": false,
                   "placeholder": "pairingData.iOSDevicePairingID"
                 },
                 "iOSDeviceLTSK": {
                   "title": "iOS Pairing LTSK",
                   "type": "string",
-                  "required": true,
+                  "required": false,
                   "placeholder": "pairingData.iOSDeviceLTSK"
                 },
                 "iOSDeviceLTPK": {
                   "title": "iOS Pairing LTPK",
                   "type": "string",
-                  "required": true,
+                  "required": false,
                   "placeholder": "pairingData.iOSDeviceLTPK"
                 }
-              }
+              },
+              "description": "Legacy manual credentials. Newly paired devices use the private pairing store; leave this empty."
+            },
+            "legacyName": {
+              "title": "Previous configured name (migration only)",
+              "type": "string",
+              "description": "Only needed if renaming an accessory before the first restart with this version. Leave empty for new devices."
             }
           }
         }
       }
     }
-  }
+  },
+  "customUi": true
 }

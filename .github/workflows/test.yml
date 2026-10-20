@@ -1,0 +1,25 @@
+name: Test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: node --check homebridge-ui/server.js && node --check homebridge-ui/public/app.js
+      - run: npm pack --dry-run
+      - run: node -e "console.log(JSON.stringify({node:process.version,homebridge:require('homebridge/package.json').version,hapController:require('hap-controller/package.json').version}))"

@@ -4,7 +4,7 @@
   "description": "Homebridge Homekit Control allows you to control HomeKit-enabled Devices directly from within HomeBridege. (Based on previous versions develped by MartinPham and frank.bauer)",
   "alias": "HomekitControl",
   "author": "minamoanes",
-  "version": "0.3.0-beta.3",
+  "version": "0.3.0-beta.4",
   "keywords": [
     "homebridge-plugin",
     "homebridge",
@@ -16,22 +16,24 @@
     "homekit",
     "siri"
   ],
-  "homepage": "https://github.com/minamoanes/homebridge-homekit-control#readme",
+  "homepage": "https://github.com/pponce/homebridge-homekit-control#readme",
   "bugs": {
-    "url": "https://github.com/minamoanes/homebridge-homekit-control/issues"
+    "url": "https://github.com/pponce/homebridge-homekit-control/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com:minamoanes/homebridge-homekit-control.git"
+    "url": "git+https://github.com/pponce/homebridge-homekit-control.git"
   },
   "license": "Apache-2.0",
   "scripts": {
-    "lint": "eslint src/**.ts --max-warnings=0",
+    "lint": "eslint src --max-warnings=0",
     "dev": "npm run build && npm link && nodemon",
     "build": "rm -rf ./dist && tsc",
     "local": "npm run build && npm link",
     "gobeta": "npm version prepatch --preid beta && npm publish --tag=beta",
-    "prepublishOnly": "npm run lint && npm run build"
+    "prepublishOnly": "npm run lint && npm run build",
+    "test": "npm run build && node --test tests/*.test.js",
+    "prepare": "npm run build"
   },
   "engines": {
     "homebridge": "^1.9.0||^2.0.0-beta",
@@ -47,7 +49,8 @@
     "command-line-args": "^6.0.1",
     "command-line-usage": "^7.0.3",
     "fakegato-history": "^0.6.6",
-    "hap-controller": "^0.10.2"
+    "hap-controller": "^0.10.2",
+    "@homebridge/plugin-ui-utils": "2.2.6"
   },
   "devDependencies": {
     "@types/node": "^22.13.11",
@@ -79,5 +82,14 @@
       "type": "github",
       "url": "https://github.com/minamoanes"
     }
+  ],
+  "files": [
+    "dist",
+    "shared",
+    "homebridge-ui",
+    "cli.js",
+    "config.schema.json",
+    "README.md",
+    "LICENSE"
   ]
 }

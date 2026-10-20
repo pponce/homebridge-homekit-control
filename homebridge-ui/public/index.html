@@ -1,0 +1,22 @@
+<style>
+.hkc{max-width:900px;margin:auto}.hkc section{padding:18px;margin:12px 0;border:1px solid #8885;border-radius:8px}.hkc label{display:block;margin:10px 0 4px}.hkc button{margin:8px 8px 4px 0}.hkc .row-line{display:flex;gap:12px;flex-wrap:wrap}.hkc .row-line>div{flex:1;min-width:180px}.hkc #message{white-space:pre-wrap}.hkc .device{border-top:1px solid #8884;padding:12px 0}.hkc input,.hkc select{max-width:100%}.hkc small{display:block}
+</style>
+<div class="hkc">
+<h3>HomeKit Control</h3>
+<p>Connect Wi-Fi HomeKit accessories to Homebridge. Devices keep their original firmware.</p>
+<div id="message" role="status" aria-live="polite"></div>
+<section>
+<h4>Add a device</h4>
+<p>Devices must be on Wi-Fi and available to pair. If already in Apple Home, remove their direct pairing first. Homebridge will expose the device back to Apple Home; room and automation assignments may need updating.</p>
+<label for="interface">Network interface (optional)</label><input id="interface" class="form-control" placeholder="For example: eth0">
+<button id="discover" class="btn btn-primary">Discover devices</button>
+<label for="devices">Discovered devices</label><select id="devices" class="form-control"><option value="">Discover to select a device</option></select>
+<div class="row-line"><div><label for="name">Device name</label><input id="name" class="form-control" maxlength="100"></div><div><label for="pin">HomeKit pairing code</label><input id="pin" class="form-control" type="password" autocomplete="off" placeholder="123-45-678"></div></div>
+<button id="pair" class="btn btn-primary" disabled>Pair and save device</button>
+<small>Pairing keys are saved privately on the Homebridge server. Restart Homebridge after adding a device.</small>
+<div id="pending"></div>
+</section>
+<section><h4>Connection status</h4><button id="refresh" class="btn btn-secondary">Refresh status</button><div id="status"></div></section>
+<section><h4>Device settings</h4><p>Rename devices and adjust history or advanced settings below. Use <strong>Save settings</strong> when finished.</p><button id="settings" class="btn btn-secondary">Show device settings</button><button id="save" class="btn btn-primary">Save settings</button></section>
+</div>
+<script src="app.js"></script>
