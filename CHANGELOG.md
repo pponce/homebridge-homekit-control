@@ -15,3 +15,7 @@
 - Reset the transport after rejected subscriptions and unsubscribe to work around stale subscription state in the controller dependency.
 
 Hardware validation is still required for Koogeek O1US and Mysa INF-V1-0. These models are candidates, not certified/tested device claims.
+
+- Add compatibility testing for the reported Homebridge 2.4.0 / Node 24.22.0 / npm 11.19.1 stack using its own HAP library.
+- Resolve modern package exports when building against Homebridge 2.x; continue checking plugin source types while skipping upstream declaration-file checks.
+- Explain pairing-unavailable error 6 in settings and documentation; distinguish saved pairings, authentication failures, and busy/locked-out accessories.

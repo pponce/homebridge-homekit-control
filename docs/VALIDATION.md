@@ -3,7 +3,10 @@
 ## Automated checks
 
 Run `npm ci`, `npm run lint`, and `npm test`. GitHub Actions tests the existing Node
-18/20/22 declarations against the locked Homebridge 1.9.0 dependency. Tests cover:
+18/20/22 declarations against the locked Homebridge 1.9.0 dependency. An additional
+job installs the reported Node 24.22.0 / npm 11.19.1 / Homebridge 2.4.0 stack and tests
+against its own HAP library (2.2.2), rather than a separate older HAP dependency.
+Tests cover:
 
 - Three identical outlet names with independent characteristic writes.
 - Legacy accessory/service identity migration and a subsequent rename.
@@ -23,9 +26,12 @@ They do not establish radio/network interoperability with a Koogeek or Mysa.
 
 Open plugin settings after a restart and download diagnostics. The runtime field
 contains the Node version and Homebridge server version used by the plugin, rather
-than a possibly different Node installation in your SSH shell. No access to Pedro's
-live host was available during development. Do not broaden compatibility claims
-until the actual runtime is checked.
+than a possibly different Node installation in your SSH shell. The reported host is
+Linux Mint 22.3 x64, Homebridge 2.4.0, Homebridge UI 5.29.0, Node 24.22.0 and npm
+11.19.1. CI reproduces the Node/npm/Homebridge versions on Ubuntu; it does not run
+on the live Linux Mint host or test the complete Homebridge UI 5.29.0 application.
+The custom UI has browser-flow and server-IPC tests. Physical pairing and network
+interoperability still require the acceptance checks below.
 
 ## Koogeek O1US acceptance
 

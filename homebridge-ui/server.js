@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const storage = require('../shared/storage');
 const controller = require('../shared/controller');
+const { PairingInputError, pairingMessage } = require('../shared/pairing-errors');
 // UI utils 2.x is ESM; keep the runtime plugin CommonJS for existing Homebridge versions.
 (async () => {
   const { HomebridgePluginUiServer, RequestError } = await import('@homebridge/plugin-ui-utils');
@@ -16,7 +17,7 @@ const controller = require('../shared/controller');
         try { return await fn(body || {}); }
         catch (e) {
           // Do not forward protocol response bodies or pairing credentials to logs/the browser.
-          const message = path === '/pair' ? 'Pairing did not complete. Check the code and pairing state; if pairing succeeded but saving failed, reset the device before retrying.' : 'Could not complete the device request. Check connectivity and saved settings.';
+          const message = path === '/pair' ? pairingMessage(e) : 'Could not complete the device request. Check connectivity and saved settings.';
           throw new RequestError(message);
         } finally { this.busy = false; }
       });
@@ -28,9 +29,9 @@ const controller = require('../shared/controller');
       });
       route('/pair', async ({ id, pin, name }) => {
         const device = this.devices.get(id);
-        if (!device) throw new Error('Discover the device first');
+        if (!device) throw new PairingInputError('Discover the device first');
         if (name && (typeof name !== 'string' || name.length > 100)) throw new Error('Invalid name');
-        if (storage.read(this.homebridgeStoragePath, 'pairings', id)) throw new Error('Pairing already saved');
+        if (storage.read(this.homebridgeStoragePath, 'pairings', id)) throw new PairingInputError('A pairing is already saved for this device. Use Add saved device or its existing settings instead of pairing it again.');
         return controller.pair(this.homebridgeStoragePath, device, pin, name);
       });
       route('/saved-pairings', async () => storage.listPairings(this.homebridgeStoragePath));

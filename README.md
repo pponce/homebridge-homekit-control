@@ -208,16 +208,33 @@ Here are some additional configuration parameters, not obtained by the Device Pa
 }
 ```
 
-## How to fix Known Errors:
+## Pairing unavailable: `M2: Error: 6`
 
-**if you get the error `M2: Error: 6`:**
+`M2` is the accessory's first reply during Pair Setup. Error `6` is HomeKit's
+**Unavailable** response: the accessory is refusing this pairing method. A common
+cause is that it is already paired. This is different from an incorrect setup code
+(authentication error `2`). The plugin cannot bypass the accessory's pairing state.
 
-1. Add the device to your Homekit
-2. Once the device is added and connected to your Wifi network
-3. Remove device from your Home
-4. Device should still be connected to your Wifi (check it from your router's connected clients)
-5. Run the `homekitPair` command in your Homebridge and enter the pin
-6. And voila, you get the JSON
+- If this plugin already has saved credentials, reuse them; do not pair again.
+- If the accessory is currently in Apple Home, remove its direct pairing **while it
+  is online**, then click **Discover devices** again in plugin settings. Pair only
+  when it advertises itself as available. Re-adding through Homebridge can require
+  updating rooms, scenes and automations.
+- If the accessory is new and already connected to Wi-Fi and available to pair,
+  pair directly in the plugin. There is no need to add it to Apple Home first.
+- Some accessories need Apple Home or their manufacturer's setup flow to join Wi-Fi.
+  Adding to Apple Home and then removing it is a workaround for that initial setup,
+  not a mandatory pairing sequence. Whether Wi-Fi is retained depends on the device.
+- If it still reports unavailable, use the manufacturer's HomeKit pairing/reset
+  procedure. A full factory reset can also remove Wi-Fi settings.
+
+The settings page disables pairing for devices advertised as already paired, enforces
+that check on the server, and explains error 6 if the device rejects the request.
+Discovery can become stale, so it cannot prevent every refusal. It does not reset or
+unpair devices automatically, or repeatedly retry pairing codes. Manual JSON copying
+is unnecessary with the settings page; `homekitPair` remains an optional legacy tool.
+
+Protocol reference: [HAP-NodeJS pairing handler and error codes](https://github.com/homebridge/HAP-NodeJS/blob/latest/src/lib/HAPServer.ts).
 
 ## Tested Accesories
 

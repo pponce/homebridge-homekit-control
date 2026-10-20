@@ -3,7 +3,9 @@
         "outDir": "./dist/",
         "rootDir": "./src/",
         "target": "ES2019", // ~node10
-        "module": "commonjs",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "skipLibCheck": true,
         "lib": [
             "dom",
             "esnext",
