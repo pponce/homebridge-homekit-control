@@ -1,6 +1,6 @@
-const {test}=require('node:test');const assert=require('node:assert/strict');const {EventEmitter}=require('node:events');
+const {test,before}=require('node:test');const assert=require('node:assert/strict');const {EventEmitter}=require('node:events');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
-const hap=require('hap-nodejs');const {HKClient}=require('../dist/HKClient');const {SupportedServices}=require('../dist/SupportedDevices');
+let hap;before(async()=>{hap=await require('./helpers/host').loadHap();});const {HKClient}=require('../dist/HKClient');const {SupportedServices}=require('../dist/SupportedDevices');
 function fixture(){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'hkc-test-'));
  const api=new EventEmitter();api.hap=hap;api.user={storagePath:()=>root};api.serverVersion='test';

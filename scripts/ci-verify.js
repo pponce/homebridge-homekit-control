@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const tasks = [['build',['run','build']],['lint',['run','lint']],['tests',['exec','--','node','--test','tests/*.test.js']],['package',['pack','--dry-run']]];
 if(process.env.HKC_UI_TEST) tasks.push(['browser',['scripts/ui-smoke.js']]);
-let failed=false;let report='';
+let failed=false;let report='Runtime: '+JSON.stringify({...require('../tests/helpers/host').versions,npm:spawnSync('npm',['--version'],{encoding:'utf8'}).stdout.trim()})+'\n\n';
 for(const [name,args] of tasks){
   // Explicit files avoid shell expansion and also work on Node 18.
   const command=name==='tests'||name==='browser'?'node':'npm';
