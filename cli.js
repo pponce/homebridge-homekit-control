@@ -48,7 +48,8 @@ if (options.help !== undefined) {
 }
 
 (async () => {
-  const { IPDiscovery, HttpClient } = require("hap-controller");
+  const IPDiscovery = require("hap-controller/lib/transport/ip/ip-discovery").default;
+  const HttpClient = require("hap-controller/lib/transport/ip/http-client").default;
 
   const fs = require("fs");
 
