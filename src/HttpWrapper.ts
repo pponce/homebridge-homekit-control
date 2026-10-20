@@ -59,7 +59,7 @@ export function checkStatus(response: any) {
 export class HttpWrapper extends EventEmitter {
   public client: HttpClient;
   private readonly list: Sequencer;
-  private listeners = new Map<string, (data: any) => void>();
+  private watchers = new Map<string, (data: any) => void>();
   private subscriptions = new Set<string>();
   private stopped = false;
   private generation = 0;
@@ -74,7 +74,7 @@ export class HttpWrapper extends EventEmitter {
     const client = new this.factory(this.deviceId, this.address, this.port, this.pairingData);
     client.on("event", (event: any) => {
       if (generation !== this.generation || this.stopped) return;
-      for (const c of event.characteristics || []) this.listeners.get(`${c.aid}.${c.iid}`)?.(c);
+      for (const c of event.characteristics || []) this.watchers.get(`${c.aid}.${c.iid}`)?.(c);
     });
     client.on("event-disconnect", () => {
       // The library clears its subscription state after emitting this event.
@@ -122,8 +122,8 @@ export class HttpWrapper extends EventEmitter {
       return result;
     });
   }
-  watch(c: CharacteristicDescription, listener: (data: any) => void) { this.listeners.set(c.cname, listener); }
-  clearWatchers() { this.listeners.clear(); }
+  watch(c: CharacteristicDescription, listener: (data: any) => void) { this.watchers.set(c.cname, listener); }
+  clearWatchers() { this.watchers.clear(); }
   async unsubscribeAll() {
     if (this.subscriptions.size) {
       await this.request(async () => checkStatus(await this.client.unsubscribeCharacteristics([...this.subscriptions])));
@@ -136,7 +136,7 @@ export class HttpWrapper extends EventEmitter {
     this.generation++;
     this.client.removeAllListeners();
     this.list.close();
-    this.listeners.clear();
+    this.watchers.clear();
     // Bound teardown even when the accessory vanished mid-command.
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

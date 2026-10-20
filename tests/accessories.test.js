@@ -43,9 +43,9 @@ test('cached accessory and legacy outlet subtype survive migration and rename',a
 test('thermostat keeps heat-only modes and temperature limits; failed writes reject',async()=>{
  const f=fixture();try{
  const services=[{iid:10,type:'4A',characteristics:[
- char(11,'11',0,{format:'uint8','valid-values':[0,1],minValue:0,maxValue:1}),
+ char(11,'F',0,{format:'uint8','valid-values':[0,1],minValue:0,maxValue:1}),
  char(12,'33',1,{format:'uint8','valid-values':[0,1],minValue:0,maxValue:1}),
- char(13,'F',20,{format:'float',perms:['pr','ev'],minValue:0,maxValue:100}),
+ char(13,'11',20,{format:'float',perms:['pr','ev'],minValue:0,maxValue:100}),
  char(14,'35',22,{format:'float',minValue:5,maxValue:35,minStep:0.5}),
  char(15,'36',0,{format:'uint8',minValue:0,maxValue:1})]}];
  f.client._loadDevices({accessories:[{aid:1,services}]});f.client.loadOrCreate(f.client.supportedAccessories[0],true);f.client.online=true;

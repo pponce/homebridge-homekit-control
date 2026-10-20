@@ -71,8 +71,10 @@
   $('pair').onclick = () => operation(async () => {
     const pin=$('pin').value; $('pin').value='';
     const device = await homebridge.request('/pair',{id:$('devices').value,pin,name:$('name').value.trim()});
+    const selected = discovered.find(d => d.id === device.id);
+    if (selected) selected.availableToPair = false;
     try { await addConfig(device); message('Paired and saved. Restart Homebridge to connect.'); }
-    catch { message('Pairing is saved on the server, but configuration could not be saved. Use “Add saved device” below to finish.'); }
+    catch { message('Pairing is saved on the server, but configuration could not be saved. Click “Save settings” to retry, or reopen settings and use “Add saved device”.'); }
     await savedPairings(); await status();
   });
   $('refresh').onclick=()=>operation(status);

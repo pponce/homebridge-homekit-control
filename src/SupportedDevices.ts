@@ -183,9 +183,9 @@ function generateService(api: API, name: string, UUID: string, optionals?: WithU
   if (optionals === undefined) {
     optionals = [];
   }
-  const NewService = function (this: any, displayName: string | undefined, UUID: string, subtype?: string) {
+  const NewService = function (this: any, displayName: string | undefined, subtype?: string) {
     const self: any = this;
-    api.hap.Service.call(self, name, UUID, subtype);
+    api.hap.Service.call(self, displayName || name, UUID, subtype);
     optionals?.forEach((o) => this.addOptionalCharacteristic(o));
   };
   NewService.UUID = UUID;
