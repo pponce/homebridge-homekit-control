@@ -25,8 +25,10 @@ function listPairings(root) {
   });
 }
 function resolvePairing(root, config) {
-  const data = config.pairingData || read(root, 'pairings', config.id)?.pairingData;
-  if (!data || !['AccessoryPairingID','AccessoryLTPK','iOSDevicePairingID','iOSDeviceLTSK','iOSDeviceLTPK'].every(k => typeof data[k] === 'string' && data[k].length)) {
+  const valid = data => data && ['AccessoryPairingID','AccessoryLTPK','iOSDevicePairingID','iOSDeviceLTSK','iOSDeviceLTPK'].every(k => typeof data[k] === 'string' && data[k].length);
+  // The schema form can serialize an empty legacy credentials object.
+  const data = valid(config.pairingData) ? config.pairingData : read(root, 'pairings', config.id)?.pairingData;
+  if (!valid(data)) {
     throw new Error('Pairing credentials are missing. Pair or restore this device in plugin settings.');
   }
   return data;

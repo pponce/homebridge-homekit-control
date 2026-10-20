@@ -11,3 +11,15 @@ test('pairing store is private and diagnostic export cannot contain secrets or a
  assert(!JSON.stringify(output).includes('SECRET'));assert.equal(output[0].services[0].characteristics[0].iid,4);
  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('empty schema credentials fall back to private storage; complete legacy credentials still work',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'hkc-'));
+ const keys=Object.fromEntries(['AccessoryPairingID','AccessoryLTPK','iOSDevicePairingID','iOSDeviceLTSK','iOSDeviceLTPK'].map(k=>[k,'saved']));
+ try {
+ storage.write(root,'pairings','device',{id:'device',pairingData:keys});
+ assert.deepEqual(storage.resolvePairing(root,{id:'device',pairingData:{}}),keys);
+ assert.deepEqual(storage.resolvePairing(root,{id:'device',pairingData:{iOSDeviceLTSK:''}}),keys);
+ const legacy={...keys,iOSDeviceLTSK:'legacy'};assert.deepEqual(storage.resolvePairing(root,{id:'device',pairingData:legacy}),legacy);
+ assert.throws(()=>storage.resolvePairing(root,{id:'missing',pairingData:{}}),/missing/);
+ } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
