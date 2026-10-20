@@ -19,7 +19,8 @@ export interface HKServiceConfig {
   id: string;
   address: string;
   port: number;
-  pairingData: PairingData;
+  pairingData?: PairingData;
+  legacyName?: string;
   proxyAll?: boolean;
 }
 export interface HKPlatformConfig extends PlatformConfig {
@@ -83,6 +84,7 @@ export interface FakeGatoProvider {
 }
 
 export interface AcceessoryDescription {
+  aid: number;
   services: ServiceDescription[];
   fakeGato: FakeGatoProvider;
 }

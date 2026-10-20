@@ -1,588 +1,313 @@
-import { PlatformAccessory, Service, Characteristic, CharacteristicProps, WithUUID, APIEvent, Formats } from "homebridge";
-import {
-  AcceessoryDescription,
-  CharacteristicDescription,
-  ExtendedCharacteristic,
-  FakeGatoProvider,
-  HKServiceConfig,
-  HttpClientCharacteristic,
-  HttpClientService,
-  IHKClient,
-  IHKPlatform,
-  ServiceDescription,
-} from "./Interfaces";
+import { PlatformAccessory, Service, Characteristic, CharacteristicProps, WithUUID, APIEvent, HAPStatus } from "homebridge";
+import { AcceessoryDescription, CharacteristicDescription, ExtendedCharacteristic, FakeGatoProvider, HKServiceConfig, HttpClientCharacteristic, IHKClient, IHKPlatform, ServiceDescription, HKPlatformAccessory } from "./Interfaces";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
-import { Accessories } from "hap-controller/lib/model/accessory";
-import { CharacteristicObject } from "hap-controller/lib/model/characteristic";
-import { HttpWrapper } from "./HttpWrapper";
+import { HttpWrapper, CharacteristicStatusError } from "./HttpWrapper";
+const storage = require("../shared/storage");
 
-interface FakeGatoData {
-  interval: number;
-  timer: any;
-}
-
+interface FakeGatoData { interval: number; timer: ReturnType<typeof setInterval> | undefined; }
 function copyProps(source: HttpClientCharacteristic, char: ExtendedCharacteristic) {
-  const props: Partial<CharacteristicProps> = {
-    perms: [],
-    format: "",
-  };
-
-  if (source.minValue !== undefined) {
-    props.minValue = source.minValue;
+  const props: Partial<CharacteristicProps> = {};
+  for (const key of ["minValue", "maxValue", "minStep", "format", "perms", "unit", "description", "maxLen", "maxDataLen", "validValues", "validValueRanges", "adminOnlyAccess"]) {
+    if (source[key] !== undefined) props[key] = source[key];
   }
-  if (source.maxValue !== undefined) {
-    props.maxValue = source.maxValue;
-  }
-  if (source.minStep !== undefined) {
-    props.minStep = source.minStep;
-  }
-  if (source.format !== undefined) {
-    props.format = source.format;
-  }
-  if (source.perms !== undefined) {
-    props.perms = source.perms as any;
-  }
-  if (source.unit !== undefined) {
-    props.unit = source.unit;
-  }
-  if (source.description !== undefined) {
-    props.description = source.description;
-  }
-  if (source.maxLen !== undefined) {
-    props.maxLen = source.maxLen;
-  }
-  if (source.maxDataLen !== undefined) {
-    props.maxDataLen = source.maxDataLen + 4;
-  }
-  if (source.validValues !== undefined) {
-    props.validValues = source.validValues;
-  }
-  if (source.validValueRanges !== undefined) {
-    props.validValueRanges = source.validValueRanges;
-  }
-  if (source.adminOnlyAccess !== undefined) {
-    props.adminOnlyAccess = source.adminOnlyAccess as any;
-  }
+  // HAP JSON uses hyphenated names; do not advertise unsupported thermostat modes.
+  if (source["valid-values"] !== undefined) props.validValues = source["valid-values"];
+  if (source["valid-values-range"] !== undefined) props.validValueRanges = source["valid-values-range"];
   char.setProps(props);
 }
 
 export class HKClient implements IHKClient {
-  private readonly serviceConfig: HKServiceConfig;
-  private readonly parent: IHKPlatform;
-  private deviceID: string;
-  private readonly uuid: string;
-
   readonly name: string;
-  private didFinishWasDefered: boolean = false;
-  private accesoriesWereLoaded: boolean = false;
-  public didFinishStartup: boolean = false;
+  public didFinishStartup = false;
+  private readonly deviceID: string;
+  private readonly root: string;
+  private readonly key: string;
+  private client?: HttpWrapper;
+  private supportedAccessories: AcceessoryDescription[] = [];
+  private fakeGato: FakeGatoData;
+  private stopped = false;
+  private initialized = false;
+  private online = false;
+  private recovering = false;
+  private retry?: ReturnType<typeof setTimeout>;
+  private heartbeat?: ReturnType<typeof setTimeout>;
+  private failures = 0;
+  private descriptorSignature = "";
+  private diagnostics: any = {};
+  private endpoint: { address: string; port: number };
+  private configured = new Set<HKPlatformAccessory>();
 
-  private supportedAccessories: AcceessoryDescription[];
-  private readonly fakeGato: FakeGatoData;
-  private readonly client: HttpWrapper;
-  constructor(serviceConfig: HKServiceConfig, parent: IHKPlatform) {
-    this.parent = parent;
-    this.serviceConfig = serviceConfig;
-    this.name = serviceConfig.name ? serviceConfig.name : "Unnamed Accessory";
-    this.deviceID = this.name;
-
-    //data
-    this.supportedAccessories = [];
-    if (serviceConfig.uniquePrefix) {
-      this.uuid = parent.api.hap.uuid.generate(`${serviceConfig.uniquePrefix}.${this.name}`);
-    } else {
-      this.uuid = parent.api.hap.uuid.generate(this.name);
-    }
-
-    this.fakeGato = {
-      interval: 0,
-      timer: undefined,
-    };
-
-    const self = this;
-
-    this.client = new HttpWrapper(this.parent.log, this.serviceConfig.id, this.serviceConfig.address, this.serviceConfig.port, this.serviceConfig.pairingData);
-    this.client
-      .getAccessories()
-      .then((inData: any) => {
-        this._preloadValues(inData as Accessories)
-          .then(() => {
-            //looks like this Gatt-Result is the actual return type for httpClient as well
-            self._loadDevices(inData as Accessories);
-            self.accesoriesWereLoaded = true;
-
-            if (this.serviceConfig.logFoundServices) {
-              this.logSourceServices();
-            }
-
-            if (this.didFinishWasDefered) {
-              this.didFinishWasDefered = false;
-              this.didFinishLaunching();
-            }
-          })
-          .catch((e) => {
-            self.parent.log.error("Error", e);
-          });
-      })
-      .catch((e) => {
-        self.parent.log.error("Error", e);
-      });
-
+  constructor(private readonly serviceConfig: HKServiceConfig, private readonly parent: IHKPlatform,
+    private readonly discover: () => Promise<any[]> = () => require("../shared/controller").discover(undefined, 3)) {
+    this.endpoint = { address: serviceConfig.address, port: serviceConfig.port };
+    this.name = serviceConfig.name || "Unnamed Accessory";
+    this.deviceID = serviceConfig.id.toUpperCase();
+    this.root = parent.api.user.storagePath();
+    this.key = `${serviceConfig.uniquePrefix || ""}:${this.deviceID}`;
+    this.fakeGato = { interval: serviceConfig.enableHistory ? Math.max(30, Math.min(600, serviceConfig.historyInterval || 600)) : 0, timer: undefined };
     parent.api.on(APIEvent.DID_FINISH_LAUNCHING, () => {
-      if (self.accesoriesWereLoaded) {
-        self.didFinishLaunching();
-      } else {
-        this.didFinishWasDefered = true;
-      }
+      this.claimCachedAccessories();
+      void this.recover();
     });
-
-    if (serviceConfig.enableHistory) {
-      if (serviceConfig.historyInterval) {
-        this.fakeGato.interval = Math.max(30, Math.min(600, serviceConfig.historyInterval));
-      } else {
-        this.fakeGato.interval = 600;
+  }
+  con(): HttpWrapper { if (!this.client) throw new Error("Device not connected"); return this.client; }
+  private legacyUuid() {
+    const name = this.serviceConfig.legacyName || this.name;
+    return this.parent.api.hap.uuid.generate(this.serviceConfig.uniquePrefix ? `${this.serviceConfig.uniquePrefix}.${name}` : name);
+  }
+  private claimCachedAccessories() {
+    for (const a of this.parent.accessories) {
+      if (a.context.homekitControl?.key === this.key || (!a.context.homekitControl && a.UUID === this.legacyUuid())) {
+        a._wasUsed = true;
+        this.configured.add(a);
+        // Until a successful read, cached values must not look live.
+        for (const s of a.services) for (const c of s.characteristics) {
+          if (s.UUID === this.parent.api.hap.Service.AccessoryInformation.UUID) continue;
+          if (c.props.perms?.includes("pr" as any)) c.onGet(() => { throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE); });
+          if (c.props.perms?.includes("pw" as any)) c.onSet(() => { throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE); });
+        }
       }
-    }
-
-    if (serviceConfig.proxyAll === undefined) {
-      serviceConfig.proxyAll = false;
     }
   }
-
-  async shutdown() {
-    this.parent.log.info(`Shuttding down '${this.name}'`);
+  private status(state: string) {
+    this.diagnostics = { ...this.diagnostics, state, updatedAt: new Date().toISOString(), nodeVersion: process.version,
+      homebridgeVersion: this.parent.api.serverVersion, pluginVersion: require("../package.json").version,
+      address: this.endpoint.address, port: this.endpoint.port, queueLength: this.client?.queueLength || 0, subscriptions: this.client?.subscriptionCount || 0, failures: this.failures };
+    try { storage.write(this.root, "status", this.key, this.diagnostics); }
+    catch { this.parent.log.warn(`${this.name}: Could not save connection diagnostics`); }
+  }
+  private disconnected() {
+    if (this.stopped) return;
+    this.online = false;
+    this.status("offline");
+    for (const a of this.configured) for (const s of a.services) for (const c of s.characteristics) {
+      if (s.UUID !== this.parent.api.hap.Service.AccessoryInformation.UUID && c.props.perms?.includes("pr" as any)) {
+        c.updateValue(new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+      }
+    }
+    if (this.heartbeat) clearTimeout(this.heartbeat);
+    if (!this.recovering) this.scheduleRecovery();
+  }
+  private scheduleRecovery() {
+    if (this.retry || this.stopped) return;
+    // Bounded rapid retries, then a low-frequency probe so a long outage heals automatically.
+    const delay = this.failures >= 6 ? 300000 : Math.min(60000, 2000 * 2 ** this.failures);
+    this.diagnostics.nextRetryAt = new Date(Date.now() + delay).toISOString();
+    this.status("offline");
+    this.retry = setTimeout(() => { this.retry = undefined; void this.recover(); }, delay);
+    this.retry.unref?.();
+  }
+  private async recover() {
+    if (this.stopped || this.recovering) return;
+    this.recovering = true;
+    this.online = false;
+    this.status("connecting");
     try {
-      await this.con().unsubscribeAll();
-      this.parent.log.debug(`Unsubscribe finished on '${this.name}'`);
-    } catch (e) {
-      this.parent.log.debug("Error on shutdown:", e);
-    }
-    this.parent.log.info(`Shuttdown of '${this.name}' finished`);
-  }
-
-  async _preloadValues(data: Accessories) {
-    const list = data.accessories
-      .map((a) => {
-        return a.services.map((s) => {
-          const r = s.characteristics
-            .filter((c: CharacteristicObject) => c.value === null)
-            .map((c: CharacteristicObject) => {
-              const cany = c as any;
-              cany.cname = `${a.aid}.${c.iid}`;
-              cany.hadResonse = false;
-              return c;
-            });
-          return r;
-        });
-      })
-      .flat(2);
-    const chars = list.map((c: any) => c.cname);
-    if (chars.length > 0) {
-      const inData: any = await this.con().getCharacteristics(chars, {
-        meta: false,
-        perms: false,
-        type: false,
-        ev: false,
-      });
-
-      //console.log(inData)
-      const newValues = inData.characteristics.filter((d) => d.value !== undefined && d.value != null);
-      this.parent.log.debug("Preloaded Values");
-      this.parent.log.debug(newValues);
-
-      data.accessories.forEach((a) =>
-        a.services.forEach((s) =>
-          s.characteristics.forEach((c: CharacteristicObject) => {
-            const val = newValues.find((v) => v.aid == a.aid && c.iid == v.iid);
-            if (val !== undefined) {
-              c.value = val.value;
-            }
-          }),
-        ),
-      );
-    }
-  }
-
-  _loadDevices(data: Accessories) {
-    this.supportedAccessories = data.accessories.map((acc: any) => {
-      const aRes: AcceessoryDescription = {
-        fakeGato: {
-          room: {},
-          motion: {},
-          history: [],
-        },
-        services: acc.services.map((s: HttpClientService) => {
-          //console.log('Service:', s)
-          const name = s.characteristics.filter((c) => c.type === "23" || c.type === "00000023" || c.type === this.parent.api.hap.Characteristic.Name.UUID);
-          let displayName: string | undefined = undefined;
-          if (name.length > 0) {
-            displayName = name[0].value;
-          }
-          if (displayName === undefined || displayName === null) {
-            displayName = `c-${s.iid}`;
-          }
-
-          const cl = this.parent.supported.classForService(s.type, this.serviceConfig.proxyAll ? s : undefined);
-          const sRes: ServiceDescription = {
-            create: cl,
-            uuid: cl !== undefined ? cl.UUID : s.type,
-            displayName: displayName,
-            uname: `${this.uuid}.${acc.aid}.${s.iid}`,
-            iid: s.iid,
-            characteristics: s.characteristics
-              .map((c: HttpClientCharacteristic) => {
-                const ccl = this.parent.supported.classForChar(c.type, this.serviceConfig.proxyAll ? c : undefined);
-                const cRes: CharacteristicDescription = {
-                  create: ccl,
-                  uuid: ccl !== undefined ? ccl.UUID : c.type,
-                  iid: c.iid === undefined ? 0 : c.iid,
-                  uname: `${this.uuid}.${acc.aid}.${s.iid}.${c.iid}`,
-                  cname: `${acc.aid}.${c.iid}`,
-                  value: c.value,
-                  source: c,
-                  connect: undefined,
-                  allowValueUpdates: true,
-                };
-                return cRes;
-              })
-              .filter((c) => {
-                if (c.create === undefined) {
-                  this.parent.log.warn(`${this.name}: Missing Chracteristic in ${s.type} with type ${c.source.type}`);
-                  if (this.serviceConfig.logFoundServices) {
-                    this.parent.log.warn(JSON.stringify(c.source, null, 4));
-                  }
-                  return false;
-                }
-                return true;
-              }),
-            source: s,
-          };
-          return sRes;
-        }),
-      };
-      return aRes;
-    });
-  }
-
-  logSourceServices() {
-    this.parent.log.info(
-      this.supportedAccessories
-        .map((a: AcceessoryDescription, i) => {
-          const services = a.services
-            .map((s: ServiceDescription) => {
-              let name = "?";
-              if (s.create) {
-                const ss = new s.create("dn", "st");
-                name = ss.displayName;
-              }
-              const chars = s.characteristics
-                .map((c: CharacteristicDescription) => {
-                  let name = "?";
-                  let props = "";
-                  if (c.create) {
-                    const cc = new c.create();
-                    name = cc.displayName;
-                    props = JSON.stringify(cc.props);
-                  }
-                  return `${name}, ${c.create?.UUID}: ${c.value}\n        (${props})}`;
-                })
-                .join("\n    - ");
-              return `Service ${name}, ${s.source.type}, ${s.create?.UUID}\n    - ${chars}`;
-            })
-            .join("\n - ");
-          return `Accessory ${i + 1}:\n - ${services}`;
-        })
-        .join("\n"),
-    );
-  }
-
-  con(): HttpWrapper {
-    return this.client;
-  }
-
-  private _updateCharacteristicValue(char: ExtendedCharacteristic, c: CharacteristicDescription) {
-    if (!c.allowValueUpdates) {
-      return;
-    }
-
-    const self = this;
-    self.parent.log.debug(`${self.name} - send get ${char.displayName} (${c.cname})`);
-
-    this.con()
-      .getCharacteristics([c.cname], {
-        meta: false,
-        perms: false,
-        type: false,
-        ev: false,
-      })
-      .then((inData: any) => {
-        const data = inData as HttpClientService;
-        const old = c.value;
-        c.value = this.checkValue(data.characteristics[0].value, char.props);
-        self.parent.log.debug(`${self.name} - received ${char.displayName}=${c.value} (was ${old}, ${c.cname})`);
-
-        if (c.value != null) {
-          char.updateValue(c.value);
+      if (this.failures || this.initialized) {
+        // mDNS IDs stay stable when DHCP addresses or the accessory's HAP port change.
+        const devices = await this.discover().catch(() => []);
+        if (this.stopped) return;
+        const discovered = devices.find(d => typeof d.id === "string" && d.id.toUpperCase() === this.deviceID);
+        if (discovered && typeof discovered.address === "string" && Number.isInteger(discovered.port) && discovered.port > 0 && discovered.port <= 65535) {
+          this.endpoint = { address: discovered.address, port: discovered.port };
+          this.client?.updateEndpoint(this.endpoint.address, this.endpoint.port);
         }
-
-        if (char.chain && char.chainValue) {
-          this.parent.log.debug(` ==> Chain received value from ${char.displayName} to ${char.chain.displayName} (Value=${char.chainValue()})`);
-          char.chain.updateValue(char.chainValue());
-        }
-      })
-      .catch((e) => {
-        self.parent.log.error(`${self.name} - get error ${char.displayName}=${c.value} (${c.cname}, ${e})`);
-        console.error(e);
-      });
+      }
+      if (!this.client) {
+        const pairing = storage.resolvePairing(this.root, this.serviceConfig);
+        this.client = new HttpWrapper(this.parent.log, this.serviceConfig.id, this.endpoint.address, this.endpoint.port, pairing);
+        this.client.on("disconnected", () => this.disconnected());
+      }
+      const data = await this.client.getAccessories();
+      if (this.stopped) return;
+      if (!Array.isArray(data.accessories) || !data.accessories.length) throw new Error("Empty accessory database");
+      this.diagnostics.services = storage.servicesForExport(data);
+      const signature = JSON.stringify(this.diagnostics.services);
+      if (!this.initialized || signature !== this.descriptorSignature) {
+        // Drop old subscriptions before rebinding a changed accessory database.
+        await this.client.unsubscribeAll();
+        this.client.clearWatchers();
+        this._loadDevices(data);
+        if (this.fakeGato.interval) this.amendFakeGato();
+        this.supportedAccessories.forEach((a, i) => this.loadOrCreate(a, i === 0));
+        this.parent.api.updatePlatformAccessories([...this.configured]);
+        this.descriptorSignature = signature;
+        this.initialized = true;
+      }
+      await this.refreshState();
+      const notify = this.supportedAccessories.flatMap(a => a.services.flatMap(s => s.characteristics))
+        .filter(c => c.connect && c.allowValueUpdates && c.source.perms?.includes("ev")).map(c => c.cname);
+      await this.client.subscribeCharacteristics(notify);
+      if (this.stopped) return;
+      this.online = true;
+      this.failures = 0;
+      delete this.diagnostics.nextRetryAt;
+      this.diagnostics.lastConnectedAt = new Date().toISOString();
+      this.status("online");
+      this.parent.log.info(`${this.name}: Connected (${notify.length} event subscriptions)`);
+      this.scheduleHeartbeat();
+      if (this.fakeGato.interval && !this.fakeGato.timer) {
+        this.fakeGato.timer = setInterval(() => { if (this.online) this.fakegatoEvent(); }, this.fakeGato.interval * 1000);
+        this.fakeGato.timer.unref?.();
+      }
+    } catch {
+      if (!this.stopped) {
+        this.failures++;
+        this.disconnected();
+        this.parent.log.warn(`${this.name}: Connection unavailable; retrying automatically`);
+      }
+    } finally {
+      this.recovering = false;
+      if (!this.didFinishStartup && !this.stopped) { this.didFinishStartup = true; this.parent.clientFinishedLaunching(this); }
+      if (!this.online && !this.stopped) this.scheduleRecovery();
+    }
   }
-
-  private checkValue(value: any, props: CharacteristicProps | HttpClientCharacteristic): any {
-    let didChange = true;
-    if (value === null || value === undefined) {
-      value = 0;
-      didChange = false;
-    }
-
-    if (props.minValue !== undefined) {
-      didChange = true;
-      value = Math.max(props.minValue, value);
-    }
-    if (props.maxValue !== undefined) {
-      didChange = true;
-      value = Math.min(props.maxValue, value);
-    }
-
-    if (props.format === Formats.DATA && props.maxDataLen) {
-      didChange = true;
-    }
-
-    if (props.format === Formats.STRING) {
-      didChange = true;
-      value = "" + value;
-    }
-
-    if (!didChange) {
-      return null;
-    }
-
-    return value;
+  private scheduleHeartbeat() {
+    if (this.stopped) return;
+    if (this.heartbeat) clearTimeout(this.heartbeat);
+    this.heartbeat = setTimeout(async () => {
+      try { await this.refreshState(); if (!this.stopped && this.online) { this.status("online"); this.scheduleHeartbeat(); } }
+      catch { this.disconnected(); }
+    }, 30000);
+    this.heartbeat.unref?.();
   }
-
-  private _setCharacteristicValue(char: ExtendedCharacteristic, value: any, c: CharacteristicDescription) {
-    value = this.checkValue(value, char.props);
-    if (value == null) {
-      return;
+  private async refreshState() {
+    const chars = this.supportedAccessories.flatMap(a => a.services.flatMap(s => s.characteristics))
+      .filter(c => c.connect && c.allowValueUpdates && c.source.perms?.includes("pr"));
+    for (let i = 0; i < chars.length; i += 40) {
+      const batch = chars.slice(i, i + 40);
+      const result = await this.con().getCharacteristics(batch.map(c => c.cname));
+      if (this.stopped) return;
+      for (const c of batch) {
+        const value = result.characteristics?.find(v => `${v.aid}.${v.iid}` === c.cname);
+        if (!value || value.value === null || value.value === undefined) throw new Error("Missing characteristic value");
+        this.updateValue(c, value.value);
+      }
     }
-
-    const data = {};
-    const self = this;
-    data[c.cname] = value;
-    self.parent.log.debug(`${self.name} - send set ${char.displayName}=${c.value} (${c.cname})`);
-
-    this.con()
-      .setCharacteristics(data)
-      .then(() => {
-        c.value = value;
-        self.parent.log.info(`${self.name} - wrote ${char.displayName}=${c.value} (${c.cname})`);
-      })
-      .catch((e) => {
-        self.parent.log.error(`${self.name} - set failed ${char.displayName}=${c.value} (${c.cname}, ${e})`);
-      });
+    this.diagnostics.lastRefreshAt = new Date().toISOString();
   }
-
+  _loadDevices(data: any) {
+    this.supportedAccessories = data.accessories.map(acc => ({
+      aid: acc.aid, fakeGato: { room: {}, motion: {}, history: [] },
+      services: acc.services.map(s => {
+        const create = this.parent.supported.classForService(s.type, this.serviceConfig.proxyAll ? s : undefined);
+        const name = s.characteristics.find(c => this.parent.supported.isID(c.type, this.parent.api.hap.Characteristic.Name.UUID))?.value;
+        return { create, uuid: create?.UUID || s.type, displayName: typeof name === "string" ? name : `c-${s.iid}`,
+          uname: `${this.key}.${acc.aid}.${s.iid}`, iid: s.iid, source: s,
+          characteristics: s.characteristics.map(c => {
+            const cls = this.parent.supported.classForChar(c.type, this.serviceConfig.proxyAll ? c : undefined);
+            return { create: cls, uuid: cls?.UUID || c.type, iid: c.iid, uname: `${this.key}.${acc.aid}.${s.iid}.${c.iid}`,
+              cname: `${acc.aid}.${c.iid}`, value: c.value, source: c, allowValueUpdates: true };
+          }).filter(c => c.create),
+        };
+      }),
+    }));
+    if (this.serviceConfig.logFoundServices) this.parent.log.info(JSON.stringify(storage.servicesForExport(data)));
+  }
+  private updateValue(c: CharacteristicDescription, value: any) {
+    if (value === undefined || value === null || this.stopped) return;
+    c.value = value;
+    c.connect?.updateValue(value);
+    if (c.connect?.chain && c.connect.chainValue) c.connect.chain.updateValue(c.connect.chainValue());
+  }
+  private async _updateCharacteristicValue(_char: ExtendedCharacteristic, c: CharacteristicDescription) {
+    if (!this.online || !c.allowValueUpdates) return;
+    try {
+      const result = await this.con().getCharacteristics([c.cname]);
+      this.updateValue(c, result.characteristics?.find(v => `${v.aid}.${v.iid}` === c.cname)?.value);
+    } catch { this.disconnected(); }
+  }
   private initAccessoryService(sData: ServiceDescription, service: Service) {
-    const self = this;
-
-    sData.characteristics.forEach((c) => {
-      c.allowValueUpdates = true;
-      if (c.create) {
-        if (c.create.UUID === this.parent.api.hap.Characteristic.SerialNumber.UUID && this.serviceConfig.uniquePrefix) {
-          this.deviceID = c.value;
-          c.allowValueUpdates = false;
-          c.value = `${this.serviceConfig.uniquePrefix}-${this.deviceID}`;
-        } else if (c.create.UUID === this.parent.api.hap.Characteristic.Name.UUID && this.serviceConfig.name) {
-          c.allowValueUpdates = false;
-          c.value = this.serviceConfig.name;
-        }
-
-        if (c.source.value !== undefined) {
-          const value = this.checkValue(c.value, c.source);
-          if (value != null) {
-            service.setCharacteristic(c.create, value);
-          }
-        }
-
-        const char = service.characteristics.find((cc) => cc.UUID === c.uuid) as ExtendedCharacteristic;
-        //const char = service.getCharacteristic(c.create as any) as ExtendedCharacteristic
-        if (char === undefined) {
-          this.parent.log.error("Unknown Characteristic: ", c.cname, service.UUID, service.characteristics.map((c) => `${c.iid}-${c.displayName}`).join(","));
-          return;
-        }
-        c.connect = char;
-        copyProps(c.source, char);
-
-        if (c.source.perms && c.source.perms.indexOf("pr") >= 0) {
-          if (char.hasOnGet) {
-            console.log("ALREADY HAS a GET WATCH", c.cname, c.uuid);
-          } else {
-            console.log("ADDING GET WATCH", c.cname, c.uuid);
-          }
-
-          char.hasOnGet = true;
-          char.on("get", (callback) => {
-            c.value = this.checkValue(c.value, char.props);
-            //console.log('GET GET GET', c.cname, callback)
-
-            callback(null, c.value);
-
-            self._updateCharacteristicValue(char, c);
-          });
-        }
-
-        if ((c.source.perms && c.source.perms.indexOf("pw") >= 0) || c.source.perms.indexOf("tw") >= 0) {
-          char.on("set", (value, callback) => {
-            self._setCharacteristicValue(char, value, c);
-            //console.log('SET SET SET')
-            if (c.source.perms && c.source.perms.indexOf("wr") >= 0) {
-              callback(null, value);
-            } else {
-              callback(null, null);
-            }
-          });
-        }
-
-        if (c.allowValueUpdates && c.source.perms && c.source.perms.indexOf("ev") >= 0 && (c.source.ev === undefined || c.source.ev)) {
-          const cl = this.con();
-          cl.on(c, (data) => {
-            if (data.value !== undefined && data.value !== null) {
-              this.parent.log.debug(`${this.name} - Got Event for ${char.displayName} (${c.cname}). Changed value ${c.value} => ${data.value}`);
-
-              c.value = this.checkValue(data.value, char.props);
-              if (c.value != null) {
-                char.updateValue(data.value);
-              }
-
-              if (char.chain && char.chainValue) {
-                this.parent.log.debug(` ==> Chain event from ${char.displayName} to ${char.chain.displayName} (Value=${char.chainValue()})`);
-                char.chain.updateValue(char.chainValue());
-              }
-            }
-          });
-
-          this.parent.log.debug(`${char.displayName} (${c.cname}) Has Events, trying to subscribe`);
-          cl.subscribeCharacteristics([c.cname])
-            .then((conn) => {
-              this.parent.log.debug(`${this.name}, ${char.displayName} (${c.cname}) Subscribed to Events`);
-              c.connection = conn;
-            })
-            .catch((e) => {
-              this.parent.log.error(`${char.displayName} failed to Subscribe`, e);
-            });
-        }
-      } else {
-        this.parent.log.warn(`Unable to create Characteristic ${c.uname} of type ${c.source.type}`);
+    for (const c of sData.characteristics) {
+      if (!c.create) continue;
+      const char = service.getCharacteristic(c.create as any) as ExtendedCharacteristic;
+      char.removeAllListeners("get"); char.removeAllListeners("set"); char.removeOnGet(); char.removeOnSet();
+      copyProps(c.source, char);
+      c.connect = char;
+      const isInfo = sData.uuid === this.parent.api.hap.Service.AccessoryInformation.UUID;
+      if (isInfo && c.uuid === this.parent.api.hap.Characteristic.Name.UUID) {
+        c.allowValueUpdates = false; c.value = this.name;
       }
-    });
-  }
-  private _serviceCreator(sData: ServiceDescription, accessory: PlatformAccessory, allServices: ServiceDescription[]) {
-    if (sData.create) {
-      const hasSameService = allServices.filter((s) => s.uuid === sData.uuid).length > 1;
-      const subtype = sData.displayName !== undefined && sData.displayName !== null ? sData.displayName : `${sData.iid}`;
-      const serviceGeneral: Service | undefined = accessory.getService(sData.create as any);
-
-      //this method does some strange compating (uuid with displayname), better implement our own search...
-      //let service: Service | undefined = accessory.getServiceById(sData.uuid, subtype)
-      let service: Service | undefined = hasSameService ? accessory.services.find((s) => s.UUID === sData.uuid && s.subtype === subtype) : serviceGeneral;
-
-      //console.log(serviceGeneral !== undefined, service !== undefined)
-      //some services are predefined without an iid, so we keep them
-      // if (service === undefined && serviceGeneral !== undefined) {
-      //     const aService = new sData.create(subtype)
-      //     console.log('IID', serviceGeneral.iid, sData.iid)
-      //     if (serviceGeneral.iid === null || sData.iid === null) {
-      //         service = serviceGeneral
-      //     }
-      // }
-      if (service !== undefined) {
-        this.parent.log.debug(`REUSING SERVICE', uuid=${service.UUID}, st=${subtype}, nst=${service.subtype}, niid=${service.iid}, iid=${sData.iid}`);
-        accessory.removeService(service);
-        service = undefined;
+      if (isInfo && c.uuid === this.parent.api.hap.Characteristic.SerialNumber.UUID && this.serviceConfig.uniquePrefix) {
+        c.allowValueUpdates = false; c.value = `${this.serviceConfig.uniquePrefix}-${c.value}`;
       }
-
-      if (service === undefined) {
-        let newService = new sData.create(sData.displayName, subtype);
-        if (newService.UUID !== sData.uuid) {
-          console.log(`nuuid=${newService.UUID}, uuid=${sData.uuid}`);
-          newService = new sData.create(sData.displayName, sData.uuid);
-        }
-
-        this.parent.log.debug(`NEW SERVICE, uuid=${sData.uuid} nuuid=${newService.UUID}, st=${subtype}, nst=${newService.subtype}, niid=${newService.iid}, dn=${newService.displayName}`);
+      if (c.value !== null && c.value !== undefined) char.updateValue(c.value);
+      if (c.source.perms?.includes("pr")) char.onGet(async () => {
+        if (!c.allowValueUpdates) return c.value;
+        if (!this.online) throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         try {
-          service = accessory.addService(newService);
-        } catch (e) {
-          this.parent.log.error(`Unable to add new version of service UUID=${newService.UUID}, subtype=${subtype}`);
-          this.parent.log.error(e as string);
-        }
-      } else {
-        //this.parent.log.debug(`REUSING SERVICE', uuid=${service.UUID}, st=${subtype}, nst=${service.subtype}, niid=${service.iid}, iid=${sData.iid}`)
-      }
-
-      if (service) {
-        this.initAccessoryService(sData, service);
-        return;
-      }
-    }
-    this.parent.log.warn(`Unable to create Service ${sData.uname} of type ${sData.source.type}`);
-  }
-
-  private loadOrCreate(accessoryServices: AcceessoryDescription) {
-    const self = this;
-
-    const configuredAcc = this.parent.accessories.find((accessory) => accessory.UUID === this.uuid);
-    // check the accessory was not restored from cache
-    if (configuredAcc === undefined) {
-      // create a new accessory
-      const accessory = new this.parent.api.platformAccessory(this.name, this.uuid);
-      this.parent.log.debug(`Building new Accessory ${accessory.displayName} (${accessory.UUID})`);
-      accessoryServices.services.map((sData: ServiceDescription) => self._serviceCreator(sData, accessory, accessoryServices.services));
-      //console.log(accessoryServices.services)
-      this.addAditionalServices(accessoryServices, accessory);
-
-      // register the accessory
-      try {
-        this.parent.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      } catch (e) {
-        this.parent.log.error(e as string);
-      }
-    } else {
-      this.parent.log.debug(`Reconfiguring existing Accesory ${configuredAcc.displayName} (${configuredAcc.UUID})`);
-      /*const services = */ accessoryServices.services.map((sData: ServiceDescription) => self._serviceCreator(sData, configuredAcc, accessoryServices.services));
-      //console.log('-----------------------')
-      //console.log(accessoryServices.services)
-      this.addAditionalServices(accessoryServices, configuredAcc);
-
-      configuredAcc._wasUsed = true;
+          const response = await this.con().getCharacteristics([c.cname]);
+          const result = response.characteristics?.find(v => `${v.aid}.${v.iid}` === c.cname);
+          if (result?.value === undefined || result?.value === null) throw new Error("Missing value");
+          this.updateValue(c, result.value); return c.value;
+        } catch (e) { throw this.hapError(e); }
+      });
+      if (c.source.perms?.includes("pw")) char.onSet(async value => {
+        if (!this.online) throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        // Preserve native constraints, including heat-only validValues. Never invent a target.
+        if (typeof value === "number" && (!Number.isFinite(value) ||
+          (char.props.minValue !== undefined && value < char.props.minValue) ||
+          (char.props.maxValue !== undefined && value > char.props.maxValue) ||
+          (char.props.validValues && !char.props.validValues.includes(value)))) throw new this.parent.api.hap.HapStatusError(HAPStatus.INVALID_VALUE_IN_REQUEST);
+        try {
+          await this.con().setCharacteristics({ [c.cname]: value });
+          this.updateValue(c, value);
+        } catch (e) { throw this.hapError(e); }
+      });
+      if (c.allowValueUpdates && c.source.perms?.includes("ev")) this.con().watch(c, data => this.updateValue(c, data.value));
     }
   }
-
-  didFinishLaunching() {
-    const self = this;
-    if (this.fakeGato.interval > 0) {
-      this.amendFakeGato();
-    }
-
-    this.supportedAccessories.forEach((acc) => self.loadOrCreate(acc));
-    this.didFinishStartup = true;
-    this.parent.clientFinishedLaunching(self);
-
-    if (this.fakeGato.interval > 0) {
-      this.parent.log(`Enabeling History Log for '${this.name}' every ${this.fakeGato.interval} seconds`);
-
-      this.fakegatoEvent();
-      this.fakeGato.timer = setInterval(self.fakegatoEvent.bind(self), this.fakeGato.interval * 1000);
-    }
+  private hapError(e: unknown) {
+    return new this.parent.api.hap.HapStatusError(e instanceof CharacteristicStatusError ? e.status : HAPStatus.SERVICE_COMMUNICATION_FAILURE);
   }
-
+  private loadOrCreate(data: AcceessoryDescription, first: boolean) {
+    let accessory = this.parent.accessories.find(a => a.context.homekitControl?.key === this.key && a.context.homekitControl.aid === data.aid);
+    if (!accessory && first) accessory = this.parent.accessories.find(a => !a.context.homekitControl && a.UUID === this.legacyUuid());
+    const fresh = !accessory;
+    if (!accessory) accessory = new this.parent.api.platformAccessory(this.name, this.parent.api.hap.uuid.generate(`${PLUGIN_NAME}:${this.key}:${data.aid}`)) as HKPlatformAccessory;
+    const a = accessory;
+    a._wasUsed = true;
+    a.displayName = this.name;
+    const context = a.context.homekitControl || { key: this.key, aid: data.aid, services: {} };
+    const subtypes: Record<string, string | undefined> = context.services || {};
+    const used = new Set<Service>();
+    for (const s of data.services) {
+      if (!s.create) continue;
+      let service: Service | undefined;
+      const sid = String(s.iid);
+      if (Object.prototype.hasOwnProperty.call(subtypes, sid)) service = a.services.find(x => x.UUID === s.uuid && x.subtype === subtypes[sid]);
+      // Adopt a legacy subtype without changing HomeKit's service identity.
+      if (!service) service = a.services.find(x => !used.has(x) && x.UUID === s.uuid && x.subtype === s.displayName);
+      if (!service && (s.uuid === this.parent.api.hap.Service.AccessoryInformation.UUID || data.services.filter(x => x.uuid === s.uuid).length === 1)) {
+        service = a.services.find(x => !used.has(x) && x.UUID === s.uuid && !x.subtype);
+      }
+      if (!service) service = a.addService(new s.create(s.displayName, `hap-${data.aid}-${s.iid}`));
+      used.add(service);
+      // JSON cannot preserve undefined; AccessoryInformation is matched specially on restoration.
+      subtypes[sid] = service.subtype;
+      service.displayName = s.displayName || this.name;
+      this.initAccessoryService(s, service);
+    }
+    // Only remove services previously managed by us, never unrelated history services.
+    for (const old of a.services.slice()) {
+      if (!used.has(old) && Object.values(context.services || {}).includes(old.subtype)) a.removeService(old);
+    }
+    a.context.homekitControl = { key: this.key, deviceId: this.deviceID, aid: data.aid,
+      services: Object.fromEntries(data.services.filter(s => s.create).map(s => [s.iid, subtypes[String(s.iid)]])) };
+    this.configured.add(a);
+    this.addAditionalServices(data, a);
+    if (fresh) { this.parent.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [a]); this.parent.accessories.push(a); }
+  }
+  async shutdown() {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.online = false;
+    if (this.retry) clearTimeout(this.retry);
+    if (this.heartbeat) clearTimeout(this.heartbeat);
+    if (this.fakeGato.timer) clearInterval(this.fakeGato.timer);
+    await this.client?.shutdown();
+    this.status("stopped");
+  }
   protected addAditionalServices(accessoryServices: AcceessoryDescription, accesory: PlatformAccessory) {
     this.addFakeGatoService(accessoryServices.fakeGato, accesory);
   }
@@ -699,7 +424,7 @@ export class HKClient implements IHKClient {
 
   fakegatoEvent() {
     const self = this;
-    this.parent.log.info("Timer - ", this.name);
+    this.parent.log.debug("History refresh", this.name);
 
     this.supportedAccessories
       .filter((acc: AcceessoryDescription) => acc.fakeGato && acc.fakeGato.history.length > 0)
@@ -721,14 +446,14 @@ export class HKClient implements IHKClient {
               //no auto updates, so trigger manual reads
               //if (c.source.perms && (c.source.perms.indexOf('ev')<0))
               if (c.connect) {
-                this.parent.log.info("FakeGato Triggered Value read", c.cname);
+                this.parent.log.debug("History read", c.cname);
 
                 self._updateCharacteristicValue(c.connect, c);
               }
             }
           });
 
-          this.parent.log.info("Writing FakeGato", h.type, data);
+          this.parent.log.debug("Writing history", h.type);
           h.logService.addEntry(data);
         });
       });

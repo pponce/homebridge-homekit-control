@@ -16,7 +16,10 @@ export function listKnownServices(api: API, parent: SupportedServices): WithUUID
     api.hap.Service.MotionSensor,
     api.hap.Service.Battery,
     api.hap.Service.Lightbulb,
+    api.hap.Service.Fan,
+    api.hap.Service.Fanv2,
     api.hap.Service.Outlet,
+    api.hap.Service.Thermostat,
     api.hap.Service.LightSensor,
     api.hap.Service.IrrigationSystem,
     api.hap.Service.Valve,
@@ -49,7 +52,14 @@ export function listKnownCharacteristics(api: API, parent: SupportedServices): W
     api.hap.Characteristic.CarbonMonoxideLevel,
     api.hap.Characteristic.CarbonMonoxidePeakLevel,
     api.hap.Characteristic.CurrentTemperature,
+    api.hap.Characteristic.TargetTemperature,
+    api.hap.Characteristic.CurrentHeatingCoolingState,
+    api.hap.Characteristic.TargetHeatingCoolingState,
+    api.hap.Characteristic.TemperatureDisplayUnits,
+    api.hap.Characteristic.HeatingThresholdTemperature,
+    api.hap.Characteristic.CoolingThresholdTemperature,
     api.hap.Characteristic.CurrentRelativeHumidity,
+    api.hap.Characteristic.TargetRelativeHumidity,
     api.hap.Characteristic.On,
     api.hap.Characteristic.OutletInUse,
     api.hap.Characteristic.MotionDetected,
@@ -63,6 +73,12 @@ export function listKnownCharacteristics(api: API, parent: SupportedServices): W
     api.hap.Characteristic.AirParticulateDensity,
     api.hap.Characteristic.ChargingState,
     api.hap.Characteristic.Active,
+    api.hap.Characteristic.RotationSpeed,
+    api.hap.Characteristic.RotationDirection,
+    api.hap.Characteristic.CurrentFanState,
+    api.hap.Characteristic.TargetFanState,
+    api.hap.Characteristic.SwingMode,
+    api.hap.Characteristic.LockPhysicalControls,
     api.hap.Characteristic.ProgramMode,
     api.hap.Characteristic.InUse,
     api.hap.Characteristic.RemainingDuration,
@@ -174,9 +190,9 @@ function generateService(api: API, name: string, UUID: string, optionals?: WithU
   if (optionals === undefined) {
     optionals = [];
   }
-  const NewService = function (this: any, displayName: string | undefined, UUID: string, subtype?: string) {
+  const NewService = function (this: any, displayName: string | undefined, subtype?: string) {
     const self: any = this;
-    api.hap.Service.call(self, name, UUID, subtype);
+    api.hap.Service.call(self, displayName || name, UUID, subtype);
     optionals?.forEach((o) => this.addOptionalCharacteristic(o));
   };
   NewService.UUID = UUID;

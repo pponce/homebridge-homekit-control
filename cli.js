@@ -5,6 +5,7 @@ const cliProgress = require("cli-progress");
 const commandLineArgs = require("command-line-args");
 const commandLineUsage = require("command-line-usage");
 const readline = require("readline");
+const { PairingInputError, pairingMessage } = require("./shared/pairing-errors");
 
 const optionDefinitions = [
   {
@@ -48,7 +49,8 @@ if (options.help !== undefined) {
 }
 
 (async () => {
-  const { IPDiscovery, HttpClient } = require("hap-controller");
+  const IPDiscovery = require("hap-controller/lib/transport/ip/ip-discovery").default;
+  const HttpClient = require("hap-controller/lib/transport/ip/http-client").default;
 
   const fs = require("fs");
 
@@ -127,12 +129,8 @@ if (options.help !== undefined) {
 
   const errorCallback = (error) => {
     console.log("\n\n-------------------------------\n");
-    console.log(`\u274C ${error?.message}`);
-    if (error?.message?.includes("M2: Error: 6")) {
-      console.error(`\u27A1 Check how to fix the (M2: Error 6) here:\n  https://github.com/minamoanes/homebridge-homekit-control#how-to-fix-known-errors`);
-    } else if (!error?.message?.includes("Invalid Pin")) {
-      console.error(`\u27A1 For further support check the Repo documentation or open an issue:\n  https://github.com/minamoanes/homebridge-homekit-control`);
-    }
+    console.log(`\u274C ${pairingMessage(error)}`);
+    console.error("Pairing guidance: https://github.com/pponce/homebridge-homekit-control#pairing-unavailable-m2-error-6");
     console.log("\n-------------------------------\n\n");
     process.exit(1);
   };
@@ -147,7 +145,7 @@ if (options.help !== undefined) {
       console.clear();
 
       rl.question(`Enter PIN for ${service.name} (XXX-XX-XXX or XXXX-XXXX or XXXXXXXX): `, async (pin) => {
-        const pinex = /(\d{3})-(\d{2})-(\d{3})|(\d{4})-(\d{4})|(\d{8})/;
+        const pinex = /^(?:(\d{3})-(\d{2})-(\d{3})|(\d{4})-(\d{4})|(\d{8}))$/;
 
         const m = ((pin || "").match(pinex) || []).filter((e) => e !== undefined);
 
@@ -157,10 +155,10 @@ if (options.help !== undefined) {
           const p = m.length === 3 ? m[1] + m[2] : m[0];
           pin = [p.slice(0, 3), p.slice(3, 5), p.slice(5, 8)].join("-");
         } else {
-          return errorCallback(new Error("Invalid Pin: " + pin));
+          return errorCallback(new PairingInputError("Invalid pairing code format"));
         }
 
-        console.log(`Pin: ${pin}`);
+
         rl.close();
 
         try {
@@ -199,7 +197,7 @@ if (options.help !== undefined) {
           accessories,
         };
         rl.close();
-        fs.writeFileSync(file, JSON.stringify(data, null, 4));
+        fs.writeFileSync(file, JSON.stringify(data, null, 4), { mode: 0o600, flag: "wx" });
         resolve(data);
       });
       rl.write(`${service.id}.json`.replace(/:/g, "-"));
@@ -234,7 +232,8 @@ if (options.help !== undefined) {
 
     console.log("\n\n");
     console.log("Paired with Service:");
-    console.log(data);
+    console.log(`${data.name} (${data.id}) — credentials saved to the chosen file.`);
+    await client.close();
 
     process.exit();
   } catch (error) {

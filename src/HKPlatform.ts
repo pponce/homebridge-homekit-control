@@ -18,9 +18,6 @@ export class HKPlatform implements IndependentPlatformPlugin, IHKPlatform {
     api.on("shutdown", async () => {
       await this.shutdownClients();
     });
-    process.on("exit", () => {
-      this.log("goodbye");
-    });
     this.config = config as HKPlatformConfig;
     this.api = api;
     this.log = log;
@@ -71,6 +68,6 @@ export class HKPlatform implements IndependentPlatformPlugin, IHKPlatform {
   }
 
   async shutdownClients() {
-    this.clients.forEach((c) => c.shutdown());
+    await Promise.allSettled(this.clients.map((c) => c.shutdown()));
   }
 }
