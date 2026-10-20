@@ -77,10 +77,14 @@ BLE HomeKit and Matter are not supported by this plugin.
 ## Testing and compatibility
 
 See [docs/VALIDATION.md](docs/VALIDATION.md) for automated checks and hardware acceptance
-steps. The existing supported-version declarations are unchanged. The CI baseline
-uses locked Homebridge 1.9.0 on Node 18, 20 and 22; this is compatibility testing, not a
-recommendation to install an end-of-life Node release. Newer Node or Homebridge releases
-need their own test results before being advertised as supported.
+steps. CI tests locked Homebridge 1.9.0 on Node 18, 20 and 22, plus the reported
+Homebridge 2.4.0 / Node 24.22.0 / npm 11.19.1 stack with Homebridge's HAP 2.2.2 library.
+Build, lint, 18 regression tests, package checks and the custom UI browser flow pass
+on that newer stack. Node 24.22.0 and later 24.x releases are now included in the
+Node declaration; the Homebridge declaration and existing dependencies are unchanged.
+Older-version coverage is compatibility testing, not a recommendation to install an
+end-of-life Node release. CI runs on Ubuntu, not the live Linux Mint host; physical
+Koogeek/Mysa pairing and complete Homebridge UI 5.29.0 integration still need live testing.
 
 
 [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
