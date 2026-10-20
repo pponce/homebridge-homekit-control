@@ -1,4 +1,4 @@
-import { PlatformAccessory, Service, Characteristic, CharacteristicProps, WithUUID, APIEvent, HAPStatus, HapStatusError } from "homebridge";
+import { PlatformAccessory, Service, Characteristic, CharacteristicProps, WithUUID, APIEvent, HAPStatus } from "homebridge";
 import { AcceessoryDescription, CharacteristicDescription, ExtendedCharacteristic, FakeGatoProvider, HKServiceConfig, HttpClientCharacteristic, IHKClient, IHKPlatform, ServiceDescription, HKPlatformAccessory } from "./Interfaces";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
 import { HttpWrapper, CharacteristicStatusError } from "./HttpWrapper";
@@ -60,8 +60,8 @@ export class HKClient implements IHKClient {
         // Until a successful read, cached values must not look live.
         for (const s of a.services) for (const c of s.characteristics) {
           if (s.UUID === this.parent.api.hap.Service.AccessoryInformation.UUID) continue;
-          if (c.props.perms?.includes("pr" as any)) c.onGet(() => { throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE); });
-          if (c.props.perms?.includes("pw" as any)) c.onSet(() => { throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE); });
+          if (c.props.perms?.includes("pr" as any)) c.onGet(() => { throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE); });
+          if (c.props.perms?.includes("pw" as any)) c.onSet(() => { throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE); });
         }
       }
     }
@@ -79,7 +79,7 @@ export class HKClient implements IHKClient {
     this.status("offline");
     for (const a of this.configured) for (const s of a.services) for (const c of s.characteristics) {
       if (s.UUID !== this.parent.api.hap.Service.AccessoryInformation.UUID && c.props.perms?.includes("pr" as any)) {
-        c.updateValue(new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE));
+        c.updateValue(new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE));
       }
     }
     if (this.heartbeat) clearTimeout(this.heartbeat);
@@ -221,7 +221,7 @@ export class HKClient implements IHKClient {
       if (c.value !== null && c.value !== undefined) char.updateValue(c.value);
       if (c.source.perms?.includes("pr")) char.onGet(async () => {
         if (!c.allowValueUpdates) return c.value;
-        if (!this.online) throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        if (!this.online) throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         try {
           const response = await this.con().getCharacteristics([c.cname]);
           const result = response.characteristics?.find(v => `${v.aid}.${v.iid}` === c.cname);
@@ -230,12 +230,12 @@ export class HKClient implements IHKClient {
         } catch (e) { throw this.hapError(e); }
       });
       if (c.source.perms?.includes("pw")) char.onSet(async value => {
-        if (!this.online) throw new HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        if (!this.online) throw new this.parent.api.hap.HapStatusError(HAPStatus.SERVICE_COMMUNICATION_FAILURE);
         // Preserve native constraints, including heat-only validValues. Never invent a target.
         if (typeof value === "number" && (!Number.isFinite(value) ||
           (char.props.minValue !== undefined && value < char.props.minValue) ||
           (char.props.maxValue !== undefined && value > char.props.maxValue) ||
-          (char.props.validValues && !char.props.validValues.includes(value)))) throw new HapStatusError(HAPStatus.INVALID_VALUE_IN_REQUEST);
+          (char.props.validValues && !char.props.validValues.includes(value)))) throw new this.parent.api.hap.HapStatusError(HAPStatus.INVALID_VALUE_IN_REQUEST);
         try {
           await this.con().setCharacteristics({ [c.cname]: value });
           this.updateValue(c, value);
@@ -245,7 +245,7 @@ export class HKClient implements IHKClient {
     }
   }
   private hapError(e: unknown) {
-    return new HapStatusError(e instanceof CharacteristicStatusError ? e.status : HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    return new this.parent.api.hap.HapStatusError(e instanceof CharacteristicStatusError ? e.status : HAPStatus.SERVICE_COMMUNICATION_FAILURE);
   }
   private loadOrCreate(data: AcceessoryDescription, first: boolean) {
     let accessory = this.parent.accessories.find(a => a.context.homekitControl?.key === this.key && a.context.homekitControl.aid === data.aid);

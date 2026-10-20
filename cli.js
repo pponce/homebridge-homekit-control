@@ -147,7 +147,7 @@ if (options.help !== undefined) {
       console.clear();
 
       rl.question(`Enter PIN for ${service.name} (XXX-XX-XXX or XXXX-XXXX or XXXXXXXX): `, async (pin) => {
-        const pinex = /(\d{3})-(\d{2})-(\d{3})|(\d{4})-(\d{4})|(\d{8})/;
+        const pinex = /^(?:(\d{3})-(\d{2})-(\d{3})|(\d{4})-(\d{4})|(\d{8}))$/;
 
         const m = ((pin || "").match(pinex) || []).filter((e) => e !== undefined);
 

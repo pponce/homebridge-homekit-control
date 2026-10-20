@@ -6,6 +6,82 @@
 
 # Homebridge HomeKit Control
 
+## This fork
+
+This fork adds connection recovery, independent controls for repeated services,
+standard thermostat support, and a pairing/diagnostics screen. See [CHANGELOG.md](CHANGELOG.md).
+
+**Koogeek O1US and Mysa INF-V1-0 have not yet been tested on physical hardware.**
+Automated tests cover a three-outlet accessory and a heat-only thermostat. Your device's
+reported services and firmware determine which controls are available.
+
+## Pair from the settings screen
+
+1. Install the plugin and open its settings in Homebridge UI.
+2. Keep the accessory on Wi-Fi. If it is already paired directly with Apple Home,
+   remove that pairing first. This is a migration: existing rooms/scenes/automations
+   may need to be updated after it is exposed through Homebridge.
+3. Click **Discover devices**, select an available accessory, enter its HomeKit code,
+   and choose **Pair and save device**.
+4. Restart Homebridge. Use **Connection status**, **Test connection**, or
+   **Download diagnostics** to check the result.
+
+If pairing succeeds but saving configuration fails, reopen settings and use
+**Add saved device**. Do not pair it a second time. Pairing credentials are saved
+immediately to a private file in `<Homebridge storage>/homekit-control/pairings/`.
+Back up that folder with your Homebridge configuration. The PIN is not saved.
+Existing configurations containing `pairingData` remain supported.
+
+The schema form remains available under **Show device settings**. Settings changes
+require **Save settings** and a Homebridge restart. Removing a configuration entry
+does not unpair the physical accessory or delete its saved keys. To return it to direct
+Apple Home pairing, use the manufacturer's HomeKit reset procedure.
+
+## Identity and migration
+
+Existing cached accessories are adopted using their old configured name, and their
+UUIDs are retained. **Keep the name and prefix unchanged for the first restart after
+upgrading.** After migration, changing the name retains identity. If you already
+changed the name before upgrading, enter the old name in **Previous configured name**.
+Keep **Prefix** unchanged; it is part of the device's namespace.
+
+New accessories are keyed by physical device ID and accessory ID. Repeated services
+use service IDs instead of names. Existing unambiguous service subtypes are retained
+so rooms and automations survive normal upgrades. Duplicate services previously lost
+by the old plugin appear as new controls and need their own Home assignments.
+
+## Reliability and diagnostics
+
+HomeKit writes wait for the device's protocol response. A failed or timed-out write
+returns an error, and is not automatically replayed. A response acknowledges a protocol
+write, not a separate physical measurement of the load or heating element.
+
+Devices unavailable at startup remain cached and are retried automatically. Reads
+refresh after reconnect, and event subscriptions are restored. Retry delays increase
+up to one minute; after six failed recovery attempts a probe runs every five minutes.
+Readable state is refreshed every 30 seconds to detect silent outages. Reserve each
+device's IP in your router; automatic recovery from an IP address change is not included.
+
+Runtime status reports the actual plugin process's Node and Homebridge versions.
+**Test connection** opens a separate connection; success does not prove that the
+running plugin's subscriptions are healthy. Exports include device names/IDs, service
+and characteristic IDs/types/constraints, runtime versions, and connection timestamps.
+They exclude pairing credentials, PINs, arbitrary characteristic values and vendor data.
+
+Thermostats retain their native supported modes and temperature limits. No heating
+control algorithm is moved into Homebridge. Manufacturer features not exposed over
+HomeKit (such as special floor-sensor settings or energy reporting) are not added.
+BLE HomeKit and Matter are not supported by this plugin.
+
+## Testing and compatibility
+
+See [docs/VALIDATION.md](docs/VALIDATION.md) for automated checks and hardware acceptance
+steps. The existing supported-version declarations are unchanged. The CI baseline
+uses locked Homebridge 1.9.0 on Node 18, 20 and 22; this is compatibility testing, not a
+recommendation to install an end-of-life Node release. Newer Node or Homebridge releases
+need their own test results before being advertised as supported.
+
+
 [![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
 [![npm](https://badgen.net/npm/v/homebridge-homekit-control)](https://www.npmjs.com/package/homebridge-homekit-control)
 [![downloads](https://badgen.net/npm/dt/homebridge-homekit-control)](https://www.npmjs.com/package/homebridge-homekit-control)

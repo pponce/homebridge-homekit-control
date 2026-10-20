@@ -42,7 +42,7 @@ export class Sequencer {
       this.onTimeout();
     }, this.timeout);
     this.active = { finish };
-    Promise.resolve().then(item.run).then(value => finish(undefined, value), e => finish(e instanceof Error ? e : new Error("HomeKit request failed")));
+    Promise.resolve().then(() => { if (!settled) return item.run(); }).then(value => finish(undefined, value), e => finish(e instanceof Error ? e : new Error("HomeKit request failed")));
   }
 }
 
